@@ -1,0 +1,13 @@
+# Точные версии инструментов. Одни и те же у разработчика, у Claude и в CI (ADR-0008).
+# Обновление — отдельным PR после проверки changelog.
+[tools]
+node = "26.10.0"
+pnpm = "11.28.3"
+gitleaks = "8.30.1"
+lefthook = "2.1.16"
+opentofu = "1.13.1"
+osv-scanner = "2.6.0"
+
+[settings]
+# Не ставить инструменты молча: только по `mise install`.
+not_found_auto_install = false

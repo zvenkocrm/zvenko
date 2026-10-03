@@ -1,0 +1,33 @@
+{
+  "name": "zvenko",
+  "private": true,
+  "description": "Звенко — CRM с единым окном каналов",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "packageManager": "pnpm@11.28.3",
+  "engines": {
+    "node": ">=26.10.0 <27",
+    "pnpm": ">=11.28.3 <12"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev:up": "node scripts/dev-up.mjs",
+    "dev:down": "docker compose down",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint --max-warnings=0 . && turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.9",
+    "turbo": "2.11.7",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0"
+  }
+}
