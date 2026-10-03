@@ -1,0 +1,19 @@
+# В репозитории — только LF, на любой ОС
+* text=auto eol=lf
+
+# Скрипты Windows — CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Бинарные файлы
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.zip binary

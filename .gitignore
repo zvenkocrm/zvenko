@@ -1,0 +1,41 @@
+# --- Зависимости и сборка ---
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# --- Секреты: никогда не коммитим ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.dev/
+
+# --- Состояние инфраструктуры (содержит секреты) ---
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# --- Логи ---
+*.log
+
+# --- Локальные переопределения ---
+mise.local.toml
+.mise.local.toml
+.claude/settings.local.json
+
+# --- IDE и ОС ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+desktop.ini
