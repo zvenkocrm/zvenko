@@ -1,0 +1,23 @@
+# Git-хуки (ADR-0008). Хуки — удобство: всё то же самое проверяет CI.
+# Инструменты берутся из shims mise — версии закреплены в mise.toml.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: secrets
+      run: gitleaks git --staged --redact --no-banner
+    - name: format
+      glob: "*.{js,mjs,cjs,ts,tsx,json,jsonc,md,yml,yaml,css,html}"
+      run: pnpm exec prettier --check {staged_files}
+    - name: lint
+      glob: "*.{js,mjs,cjs,ts,tsx}"
+      run: pnpm exec eslint --max-warnings=0 {staged_files}
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  jobs:
+    - name: typecheck
+      run: pnpm typecheck
