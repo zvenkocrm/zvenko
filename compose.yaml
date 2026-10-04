@@ -1,0 +1,59 @@
+# Локальные сервисы для разработки (ADR-0008).
+# Порты открыты только на 127.0.0.1. Пароли и ключи — из .env, его создаёт `pnpm dev:up`.
+# Версии образов закреплены; обновляет их Dependabot.
+name: zvenko
+
+services:
+  postgres:
+    # Та же мажорная версия, что в Yandex Managed PostgreSQL (ADR-0003).
+    image: postgres:18.6-alpine3.24
+    environment:
+      POSTGRES_USER: zvenko
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?запустите pnpm dev:up}
+      POSTGRES_DB: zvenko
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # С PostgreSQL 18 данные лежат в /var/lib/postgresql/<версия>/docker — монтируем родительский каталог.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zvenko -d zvenko"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  valkey:
+    image: valkey/valkey:8.1.10-alpine3.24 # gitleaks:allow — тег образа, не секрет
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?запустите pnpm dev:up}
+    # Без сохранения на диск: в Valkey только временные данные (ADR-0001).
+    command:
+      ["sh", "-c", 'exec valkey-server --requirepass "$$VALKEY_PASSWORD" --save "" --appendonly no']
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", 'valkey-cli --no-auth-warning -a "$$VALKEY_PASSWORD" ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  seaweedfs:
+    # S3-совместимое хранилище вместо MinIO CE (в архиве с 04.2026).
+    image: chrislusf/seaweedfs:4.48
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - seaweedfs-data:/data
+      - ./.dev/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+
+  mailpit:
+    # Перехват исходящих писем: http://127.0.0.1:8025
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+
+volumes:
+  postgres-data:
+  seaweedfs-data:
