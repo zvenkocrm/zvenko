@@ -1,7 +1,15 @@
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { newId } from "../src/ids.js";
-import { accounts, deals, memberships, sessions, tenants, users } from "../src/schema/index.js";
+import {
+  accounts,
+  deals,
+  memberships,
+  sessions,
+  tenants,
+  twoFactors,
+  users,
+} from "../src/schema/index.js";
 import { pgErrorCode, startTestDatabase, type TestDatabase } from "./database.js";
 import { ids, seed } from "./fixtures.js";
 
@@ -41,9 +49,23 @@ describe("роль приложения не видит данные входа 
     expect(result.rows).toEqual([{ usage: false }]);
   });
 
-  it("сессии и хэши паролей недоступны роли приложения", async () => {
+  it("сессии, хэши паролей и секреты 2FA недоступны роли приложения", async () => {
     expect(await errorCode(() => db().app.select().from(sessions))).toBe(PERMISSION_DENIED);
     expect(await errorCode(() => db().app.select().from(accounts))).toBe(PERMISSION_DENIED);
+    expect(await errorCode(() => db().app.select().from(twoFactors))).toBe(PERMISSION_DENIED);
+  });
+
+  it("новые таблицы схемы identity получают права роли входа автоматически", async () => {
+    await db().owner.execute(sql`create table identity.future_table (id int)`);
+    try {
+      const result = await db().owner.execute<{ identity: boolean; app: boolean }>(
+        sql`select has_table_privilege('zvenko_identity', 'identity.future_table', 'SELECT') as identity,
+                   has_table_privilege('zvenko_app', 'identity.future_table', 'SELECT') as app`,
+      );
+      expect(result.rows).toEqual([{ identity: true, app: false }]);
+    } finally {
+      await db().owner.execute(sql`drop table identity.future_table`);
+    }
   });
 
   it("роль приложения не создаёт пользователей", async () => {

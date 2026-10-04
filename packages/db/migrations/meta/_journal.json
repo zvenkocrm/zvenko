@@ -29,6 +29,20 @@
       "when": 1791130019375,
       "tag": "0003_identity_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791133913957,
+      "tag": "0004_two_factor",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791133915792,
+      "tag": "0005_two_factor_grants",
+      "breakpoints": true
     }
   ]
 }
