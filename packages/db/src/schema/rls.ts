@@ -13,6 +13,13 @@ export const appRole = pgRole("zvenko_app").existing();
  */
 export const identityRole = pgRole("zvenko_identity").existing();
 
+/**
+ * Роль фоновых задач (ADR-0005): переносит события из outbox в очередь pg-boss и ведёт
+ * очередь. Данных компаний не видит — обработчики событий работают ролью приложения
+ * в контексте компании события. Создаётся инфраструктурой (IaC).
+ */
+export const workerRole = pgRole("zvenko_worker").existing();
+
 // Настройки транзакции, которые выставляет withAccess(). Обёртка в подзапрос — чтобы PostgreSQL
 // вычислил значение один раз на запрос, а не на каждую строку.
 // nullif(…, ''): после конца транзакции PostgreSQL возвращает для настройки не NULL, а пустую

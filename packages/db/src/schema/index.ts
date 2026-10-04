@@ -1,6 +1,7 @@
-export { appRole, identityRole } from "./rls.js";
+export { appRole, identityRole, workerRole } from "./rls.js";
 export { memberships, teams, tenants, users } from "./tenancy.js";
 export { accounts, identity, sessions, twoFactors, verifications } from "./identity.js";
 export { membershipDirectory, platform, tenantDirectory } from "./platform.js";
 export { deals } from "./crm.js";
 export { audit, auditChainHeads, auditLog } from "./audit.js";
+export { eventReceipts, outbox } from "./events.js";

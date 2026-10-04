@@ -271,7 +271,7 @@ describe("каталог БД — защищает и будущие табли�
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
       join pg_roles r on r.oid = c.relowner
-      where c.relkind = 'r' and n.nspname in ('public', 'identity', 'platform', 'audit')`);
+      where c.relkind in ('r', 'p') and n.nspname in ('public', 'identity', 'platform', 'audit', 'pgboss')`);
     expect(result.rows).toEqual([{ owner: "zvenko_owner", super: false, bypass: false }]);
   });
 
