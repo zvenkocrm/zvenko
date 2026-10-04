@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { Type } from "@nestjs/common";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test, type TestingModuleBuilder } from "@nestjs/testing";
@@ -25,6 +26,8 @@ export interface TestApp {
 export interface TestAppOptions {
   /** По умолчанию — заведомо недоступная БД: пул подключается лениво, при первом запросе. */
   readonly databaseUrl?: string;
+  /** Подключение ролью модуля входа; по умолчанию тоже недоступная БД. */
+  readonly identityUrl?: string;
   readonly controllers?: Type[];
   /** Вход по тестовому заголовку вместо модуля identity — см. HeaderAuth. */
   readonly headerAuth?: boolean;
@@ -55,11 +58,20 @@ export const as = (userId: string, tenantId: string | null): Record<string, stri
   [SESSION_HEADER]: `${userId}:${tenantId ?? ""}`,
 });
 
+/** Адрес приложения в тестах: с ним совпадают Host и Origin запросов ко входу. */
+export const TEST_ORIGIN = "http://localhost:3000";
+export const TEST_HOST = "localhost:3000";
+
 /** Приложение с той же настройкой, что в продакшене (configureApp), и логом в память. */
 export async function createTestApp(options: TestAppOptions = {}): Promise<TestApp> {
+  const unreachable = "postgres://zvenko:unused@127.0.0.1:9/zvenko";
   const config = loadConfig({
     NODE_ENV: "test",
-    DATABASE_URL: options.databaseUrl ?? "postgres://zvenko_app:unused@127.0.0.1:9/zvenko",
+    DATABASE_URL: options.databaseUrl ?? unreachable,
+    IDENTITY_DATABASE_URL: options.identityUrl ?? unreachable,
+    AUTH_SECRET: randomBytes(32).toString("base64url"),
+    // localhost:80 — хост запросов inject по умолчанию.
+    AUTH_ORIGINS: `${TEST_ORIGIN},http://localhost:80`,
   });
   const lines: string[] = [];
   const logger = createLogger(config.LOG_LEVEL, {
@@ -81,7 +93,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     createAdapter(config, logger),
     { logger: new NestPinoLogger(logger) },
   );
-  configureApp(app);
+  configureApp(app, config);
 
   // Адреса регистрируются при init() — собираем их для реестра тестов изоляции.
   const routes: Route[] = [];

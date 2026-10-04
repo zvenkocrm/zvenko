@@ -32,17 +32,50 @@ const trustProxy = z
     return entries;
   });
 
-export const configSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  /** В контейнере — 0.0.0.0; по умолчанию слушаем только локальный интерфейс. */
-  HOST: z.string().trim().min(1).default("127.0.0.1"),
-  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
-  LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
-  /** Подключение ролью приложения (без BYPASSRLS), не владельцем схемы. */
-  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
-  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
-  TRUST_PROXY: trustProxy.default(false),
-});
+/** Адрес сайта: схема и хост, без пути. `*.` в начале хоста — любой поддомен (адреса компаний). */
+const ORIGIN = /^https?:\/\/(\*\.)?[a-z0-9.-]+(:\d{1,5})?$/i;
+
+/**
+ * Адреса, с которых открывают приложение: им разрешён вход и они попадают в доверенные
+ * источники (CSRF). Через запятую, например `https://*.zvenko.ru`.
+ */
+const origins = z
+  .string()
+  .transform((value) => value.split(",").map((origin) => origin.trim().replace(/\/$/, "")))
+  .pipe(z.array(z.string().regex(ORIGIN, "ожидается адрес вида https://app.zvenko.ru")).min(1));
+
+const postgresUrl = z.url({ protocol: /^postgres(ql)?$/ });
+
+export const configSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    /** В контейнере — 0.0.0.0; по умолчанию слушаем только локальный интерфейс. */
+    HOST: z.string().trim().min(1).default("127.0.0.1"),
+    PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+    LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
+    /** Подключение ролью приложения (без BYPASSRLS), не владельцем схемы. */
+    DATABASE_URL: postgresUrl,
+    DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+    /** Подключение ролью модуля входа: схема identity, без данных компаний (ADR-0006). */
+    IDENTITY_DATABASE_URL: postgresUrl,
+    /** Секрет подписи cookie и шифрования модуля входа. В продакшене — из хранилища секретов. */
+    AUTH_SECRET: z.string().min(32, "не короче 32 символов"),
+    AUTH_ORIGINS: origins,
+    TRUST_PROXY: trustProxy.default(false),
+  })
+  .superRefine((config, ctx) => {
+    // В продакшене cookie сессии уходят только по HTTPS.
+    if (
+      config.NODE_ENV === "production" &&
+      config.AUTH_ORIGINS.some((o) => o.startsWith("http:"))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["AUTH_ORIGINS"],
+        message: "в продакшене — только https",
+      });
+    }
+  });
 
 export type Config = Readonly<z.output<typeof configSchema>>;
 

@@ -24,7 +24,7 @@ const app = await NestFactory.create<NestFastifyApplication>(
   createAdapter(config, logger),
   { logger: new NestPinoLogger(logger) },
 );
-configureApp(app);
+configureApp(app, config);
 // SIGTERM от оркестратора: дождаться текущих запросов, закрыть соединения с БД.
 app.enableShutdownHooks();
 await app.listen({ host: config.HOST, port: config.PORT });

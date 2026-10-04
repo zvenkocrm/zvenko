@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import { type AccessContext, deals } from "@zvenko/db";
-import { and, desc, eq } from "drizzle-orm";
+import { type AccessContext, and, deals, desc, eq } from "@zvenko/db";
+
 import { TenantDb } from "../tenancy/tenant-db.js";
 
 export interface DealView {

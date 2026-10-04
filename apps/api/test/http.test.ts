@@ -72,6 +72,27 @@ describe("заголовки безопасности (SEC-10)", () => {
   });
 });
 
+describe("адрес сайта (заголовок Host)", () => {
+  it("API на чужом адресе не отвечает — 421", async () => {
+    const response = await inject({
+      method: "GET",
+      url: "/api/v1/test/conflict",
+      headers: { host: "evil.example" },
+    });
+    expect(response.statusCode).toBe(421);
+    expect(response.json()).toMatchObject({ title: "Неизвестный адрес сайта", status: 421 });
+  });
+
+  it("проверки здоровья отвечают на любом адресе: балансировщик ходит по IP", async () => {
+    const response = await inject({
+      method: "GET",
+      url: "/health/live",
+      headers: { host: "10.128.0.12:3000" },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+});
+
 describe("ID запроса (OBS-01)", () => {
   it("создаётся и возвращается клиенту", async () => {
     const response = await inject({ method: "GET", url: "/health/live" });

@@ -1,6 +1,6 @@
-import { memberships, newId, users } from "@zvenko/db";
+import { and, eq, memberships, newId, users } from "@zvenko/db";
 import { ids, seed, startTestDatabase, type TestDatabase } from "@zvenko/db/testing";
-import { and, eq } from "drizzle-orm";
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { as, createTestApp, type TestApp } from "./helpers.js";
 
@@ -61,8 +61,8 @@ async function withRole(userId: string, role: string, check: () => Promise<void>
 }
 
 describe("вход по умолчанию — запрещено (SEC-05)", () => {
-  it("пока модуль входа не подключён, API не пускает никого", async () => {
-    const plain = await createTestApp({ databaseUrl: db().appUrl });
+  it("без сессии модуля входа API не пускает никого — тестовый заголовок не действует", async () => {
+    const plain = await createTestApp({ databaseUrl: db().appUrl, identityUrl: db().identityUrl });
     try {
       const response = await plain.app.inject({
         method: "GET",

@@ -9,6 +9,7 @@ import { LogController } from "fastify";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { Config } from "./config/config.js";
+import { createHostMatcher } from "./http/allowed-hosts.js";
 import { ProblemException } from "./http/problem.js";
 import { ProblemFilter } from "./http/problem.filter.js";
 import { requestId } from "./http/request-id.js";
@@ -41,7 +42,7 @@ export function createAdapter(config: Config, logger: Logger): FastifyAdapter {
  * Общая настройка приложения — для запуска (main.ts) и для тестов, чтобы тесты проверяли
  * ровно то, что работает в продакшене.
  */
-export function configureApp(app: NestFastifyApplication): void {
+export function configureApp(app: NestFastifyApplication, config: Config): void {
   // Сообщения проверки данных — по-русски.
   z.config(z.locales.ru());
 
@@ -92,6 +93,16 @@ export function configureApp(app: NestFastifyApplication): void {
   fastify.decorateRequest("access", null);
   fastify.addHook("onRequest", (request, reply, done) => {
     void reply.header("x-request-id", request.id);
+    done();
+  });
+  // API отвечает только на своих адресах: подменённый Host не попадёт в ссылки из писем
+  // и в кэши (защита от атак через заголовок Host). Проверки здоровья балансировщик зовёт по IP.
+  const isAllowedHost = createHostMatcher(config.AUTH_ORIGINS);
+  fastify.addHook("onRequest", (request, _reply, done) => {
+    if (request.url.startsWith("/api/") && !isAllowedHost(request.host)) {
+      done(new ProblemException(HttpStatus.MISDIRECTED));
+      return;
+    }
     done();
   });
   fastify.addHook("onResponse", (request, reply, done) => {

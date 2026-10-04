@@ -5,8 +5,8 @@ import {
   Inject,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import type { Database } from "@zvenko/db";
-import { sql } from "drizzle-orm";
+import { type Database, sql } from "@zvenko/db";
+
 import { DATABASE } from "../database/database.module.js";
 import { Public } from "../tenancy/access.js";
 
