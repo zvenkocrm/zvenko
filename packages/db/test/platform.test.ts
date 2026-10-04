@@ -1,8 +1,14 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { withAccess } from "../src/access.js";
+import { withAccess, withUser } from "../src/access.js";
 import { newId } from "../src/ids.js";
-import { tenantDirectory, tenants } from "../src/schema/index.js";
+import {
+  memberships,
+  membershipDirectory,
+  tenantDirectory,
+  tenants,
+  users,
+} from "../src/schema/index.js";
 import { pgErrorCode, startTestDatabase, type TestDatabase } from "./database.js";
 import { ids, seed } from "./fixtures.js";
 
@@ -122,5 +128,84 @@ describe("компания меняет только название (F-TEN-01,
       ),
     );
     expect(code).toBe(PERMISSION_DENIED);
+  });
+});
+
+describe("справочник «пользователь → компании» (D30, F-AUTH-06)", () => {
+  /** Компании пользователя глазами роли приложения — в контексте этого пользователя. */
+  const tenantsOf = (userId: string) =>
+    withUser(db().app, userId, (tx) =>
+      tx.select({ tenantId: membershipDirectory.tenantId }).from(membershipDirectory),
+    ).then((rows) => rows.map((row) => row.tenantId).sort());
+
+  async function newUser(): Promise<string> {
+    const id = newId();
+    await db()
+      .admin.insert(users)
+      .values({ id, email: `${id}@example.test`, name: "Партнёр" });
+    return id;
+  }
+
+  it("повторяет членства: сотрудник двух компаний видит обе", async () => {
+    const userId = await newUser();
+    await db()
+      .admin.insert(memberships)
+      .values([
+        { tenantId: ids.tenantA, userId, teamId: ids.teamA1, role: "manager" },
+        { tenantId: ids.tenantB, userId, teamId: ids.teamB1, role: "manager" },
+      ]);
+    expect(await tenantsOf(userId)).toEqual([ids.tenantA, ids.tenantB].sort());
+  });
+
+  it("членство добавила роль приложения в своей компании — справочник тоже обновился", async () => {
+    const userId = await newUser();
+    await withAccess(db().app, adminOfA, (tx) =>
+      tx
+        .insert(memberships)
+        .values({ tenantId: ids.tenantA, userId, teamId: ids.teamA1, role: "manager" }),
+    );
+    expect(await tenantsOf(userId)).toEqual([ids.tenantA]);
+  });
+
+  it("отключение сотрудника и перевод в другую компанию — справочник следует за членством", async () => {
+    const userId = await newUser();
+    await db()
+      .admin.insert(memberships)
+      .values({ tenantId: ids.tenantA, userId, teamId: null, role: "manager" });
+    await db()
+      .admin.update(memberships)
+      .set({ tenantId: ids.tenantB })
+      .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, ids.tenantA)));
+    expect(await tenantsOf(userId)).toEqual([ids.tenantB]);
+
+    await db().admin.delete(memberships).where(eq(memberships.userId, userId));
+    expect(await tenantsOf(userId)).toEqual([]);
+  });
+
+  it("роль приложения видит только компании пользователя из контекста", async () => {
+    expect(await tenantsOf(ids.userA1)).toEqual([ids.tenantA]);
+    expect(await tenantsOf(ids.userB1)).toEqual([ids.tenantB]);
+    // Без контекста — ничего: справочник целиком не читается.
+    expect(await db().app.select().from(membershipDirectory)).toEqual([]);
+  });
+
+  it("писать в справочник роль приложения не может", async () => {
+    const code = await errorCode(() =>
+      withUser(db().app, ids.userA1, (tx) =>
+        tx.insert(membershipDirectory).values({ userId: ids.userA1, tenantId: ids.tenantB }),
+      ),
+    );
+    expect(code).toBe(PERMISSION_DENIED);
+  });
+
+  it("роль входа справочник не видит", async () => {
+    const code = await errorCode(() => db().identity.select().from(membershipDirectory));
+    expect(code).toBe(PERMISSION_DENIED);
+  });
+
+  it("ID пользователя не в формате UUID — контекст не ставится", async () => {
+    await expect(withUser(db().app, "not-a-uuid", () => Promise.resolve(1))).rejects.toThrow(
+      TypeError,
+    );
   });
 });

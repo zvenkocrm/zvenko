@@ -13,4 +13,16 @@ export class TenantDb {
   transaction<T>(access: AccessContext, work: (tx: Transaction) => Promise<T>): Promise<T> {
     return withAccess(this.db, access, work);
   }
+
+  /**
+   * Служебная транзакция компании без прав на её данные: область «свои» у пользователя,
+   * от имени которого запись, — например, событие его учётной записи для журнала аудита.
+   */
+  forUser<T>(tenantId: string, userId: string, work: (tx: Transaction) => Promise<T>): Promise<T> {
+    return withAccess(
+      this.db,
+      { tenantId, userId, teamIds: [], scopes: { deals: { read: "own", write: "own" } } },
+      work,
+    );
+  }
 }

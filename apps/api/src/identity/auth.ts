@@ -9,22 +9,18 @@ import {
 } from "@zvenko/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError, createAuthMiddleware } from "better-auth/api";
 import { twoFactor } from "better-auth/plugins/two-factor";
 import type { Logger } from "pino";
 import type { Config } from "../config/config.js";
+import type { AuthEvents } from "./auth-events.js";
+import { createAuthHooks } from "./auth-hooks.js";
 import {
   hashPassword,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   verifyPassword,
 } from "./password.js";
-
-/**
- * Заголовок с IP клиента для Better Auth (лимиты, список сессий). Значение ставит сервер
- * из request.ip — с учётом TRUST_PROXY; заголовок от клиента отбрасывается (см. web-request.ts).
- */
-export const CLIENT_IP_HEADER = "x-zvenko-client-ip";
+import { CLIENT_IP_HEADER } from "./request-headers.js";
 
 /** Простой сессии — 12 ч, абсолютный срок — 30 дней (D20, SEC-03). */
 export const SESSION_IDLE_SECONDS = 12 * 60 * 60;
@@ -68,32 +64,11 @@ const DISABLED_PATHS = [
 const hostOf = (origin: string): string => origin.replace(/^https?:\/\//, "");
 
 /**
- * «Доверенное устройство» пропускает второй фактор до 30 дней. Нам нужен второй фактор
- * при каждом входе (SEC-02), поэтому такие запросы отклоняются — в том числе с сервера.
- */
-const rejectTrustedDevices = createAuthMiddleware((ctx) => {
-  const body: unknown = ctx.body;
-  if (
-    ctx.path.startsWith("/two-factor/verify") &&
-    typeof body === "object" &&
-    body !== null &&
-    "trustDevice" in body &&
-    body.trustDevice === true
-  ) {
-    throw new APIError("BAD_REQUEST", {
-      code: "TRUSTED_DEVICES_DISABLED",
-      message: "Доверенные устройства отключены: второй фактор нужен при каждом входе",
-    });
-  }
-  return Promise.resolve();
-});
-
-/**
  * Better Auth за интерфейсом AuthPort (ADR-0006): включено только то, что нужно, —
  * вход по почте и паролю, второй фактор и сессии. Регистрации нет: пользователи
- * появляются по приглашению (D15).
+ * появляются по приглашению (D15). События входа уходят в журнал аудита через AuthEvents.
  */
-export function createAuth(db: Database, config: Config, logger: Logger) {
+export function createAuth(db: Database, config: Config, logger: Logger, events: AuthEvents) {
   const secure = config.NODE_ENV === "production";
   return betterAuth({
     appName: "Звенко",
@@ -147,7 +122,7 @@ export function createAuth(db: Database, config: Config, logger: Logger) {
         accountLockout: { enabled: true, maxFailedAttempts: 5, durationSeconds: 15 * 60 },
       }),
     ],
-    hooks: { before: rejectTrustedDevices },
+    hooks: createAuthHooks(events),
     advanced: {
       cookiePrefix: "zv",
       useSecureCookies: secure,

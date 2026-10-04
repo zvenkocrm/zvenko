@@ -2,6 +2,7 @@ import { Global, Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { AccessGuard } from "./access.js";
 import { AccessResolver } from "./access.resolver.js";
+import { MembershipDirectory } from "./membership-directory.js";
 import { SessionController } from "./session.controller.js";
 import { TenantDb } from "./tenant-db.js";
 import { TenantDirectory } from "./tenant-directory.js";
@@ -14,8 +15,9 @@ import { TenantDirectory } from "./tenant-directory.js";
     TenantDb,
     AccessResolver,
     TenantDirectory,
+    MembershipDirectory,
     { provide: APP_GUARD, useClass: AccessGuard },
   ],
-  exports: [TenantDb],
+  exports: [TenantDb, AccessResolver, TenantDirectory, MembershipDirectory],
 })
 export class TenancyModule {}
