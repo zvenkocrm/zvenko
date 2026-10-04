@@ -35,6 +35,14 @@ const titleFor = (status: number): string =>
   TITLES[status] ?? (status >= 500 ? "Внутренняя ошибка" : "Некорректный запрос");
 
 /**
+ * Типы ошибок, на которые клиент реагирует действием (RFC 9457, поле `type`).
+ * Например, на two-factor-required интерфейс открывает настройку 2FA.
+ */
+export const PROBLEM_TYPES = {
+  twoFactorRequired: "https://zvenko.ru/problems/two-factor-required",
+} as const;
+
+/**
  * Ошибка, которую код приложения показывает клиенту как есть: `detail` и `errors`
  * пишутся для человека. Встроенные исключения NestJS отдают только заголовок —
  * их тексты на английском и могут раскрывать внутреннее устройство.
@@ -44,6 +52,7 @@ export class ProblemException extends HttpException {
     status: HttpStatus,
     readonly detail?: string,
     readonly errors?: readonly FieldError[],
+    readonly type?: (typeof PROBLEM_TYPES)[keyof typeof PROBLEM_TYPES],
   ) {
     super(titleFor(status), status);
   }
@@ -68,6 +77,7 @@ export function toProblem(error: unknown): Problem {
   if (error instanceof ProblemException && status < 500) {
     return {
       ...problem,
+      ...(error.type === undefined ? {} : { type: error.type }),
       ...(error.detail === undefined ? {} : { detail: error.detail }),
       ...(error.errors === undefined ? {} : { errors: error.errors }),
     };

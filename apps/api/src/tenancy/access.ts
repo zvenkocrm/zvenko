@@ -3,6 +3,7 @@ import {
   createParamDecorator,
   type ExecutionContext,
   ForbiddenException,
+  HttpStatus,
   Injectable,
   SetMetadata,
   UnauthorizedException,
@@ -10,8 +11,10 @@ import {
 import { Reflector } from "@nestjs/core";
 import type { AccessContext } from "@zvenko/db";
 import type { FastifyRequest } from "fastify";
+import { PROBLEM_TYPES, ProblemException } from "../http/problem.js";
 import { AuthPort } from "../identity/auth.port.js";
 import { AccessResolver } from "./access.resolver.js";
+import { ROLES_REQUIRING_TWO_FACTOR } from "./roles.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -31,6 +34,7 @@ export const Public = (): MethodDecorator & ClassDecorator => SetMetadata(PUBLIC
 /**
  * Проверка доступа на каждом запросе (SEC-05): по умолчанию «запрещено».
  * Нет сессии — 401; нет активной компании или пользователь в ней не работает — 403.
+ * Владелец и администратор без 2FA к данным компании не допускаются (SEC-02).
  */
 @Injectable()
 export class AccessGuard implements CanActivate {
@@ -52,9 +56,17 @@ export class AccessGuard implements CanActivate {
     if (!session) throw new UnauthorizedException();
     if (session.tenantId === null) throw new ForbiddenException();
 
-    const access = await this.resolver.resolve(session.userId, session.tenantId);
-    if (!access) throw new ForbiddenException();
-    request.access = access;
+    const resolved = await this.resolver.resolve(session.userId, session.tenantId);
+    if (!resolved) throw new ForbiddenException();
+    if (ROLES_REQUIRING_TWO_FACTOR.has(resolved.role) && !session.twoFactorEnabled) {
+      throw new ProblemException(
+        HttpStatus.FORBIDDEN,
+        "Включите двухфакторную аутентификацию: без неё владельцу и администраторам доступ закрыт",
+        undefined,
+        PROBLEM_TYPES.twoFactorRequired,
+      );
+    }
+    request.access = resolved.context;
     return true;
   }
 }

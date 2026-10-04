@@ -19,7 +19,7 @@ export class BetterAuthAdapter extends AuthPort {
     const result = await this.auth.api.getSession({ headers: toWebHeaders(request) });
     if (!result) return null;
 
-    const { session } = result;
+    const { session, user } = result;
     if (Date.now() - session.createdAt.getTime() > SESSION_ABSOLUTE_MS) {
       const context = await this.auth.$context;
       await context.internalAdapter.deleteSession(session.token);
@@ -30,6 +30,7 @@ export class BetterAuthAdapter extends AuthPort {
       sessionId: session.id,
       userId: session.userId,
       tenantId: session.activeTenantId ?? null,
+      twoFactorEnabled: user.twoFactorEnabled === true,
     };
   }
 }

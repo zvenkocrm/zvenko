@@ -37,25 +37,33 @@ export interface TestAppOptions {
 const SESSION_HEADER = "x-test-session";
 
 /**
- * Тестовый вход: сессия берётся из заголовка `x-test-session: <userId>:<tenantId>`.
+ * Тестовый вход: сессия берётся из заголовка `x-test-session: <userId>:<tenantId>:<2fa>`.
  * Существует только в тестах — в приложении такого адаптера нет.
  */
 class HeaderAuth extends AuthPort {
   getSession(request: FastifyRequest): Promise<Session | null> {
     const value = request.headers[SESSION_HEADER];
     if (typeof value !== "string") return Promise.resolve(null);
-    const [userId = "", tenantId = ""] = value.split(":");
+    const [userId = "", tenantId = "", twoFactor = ""] = value.split(":");
     return Promise.resolve({
       sessionId: `test-${userId}`,
       userId,
       tenantId: tenantId === "" ? null : tenantId,
+      twoFactorEnabled: twoFactor === "2fa",
     });
   }
 }
 
-/** Заголовки запроса от имени сотрудника компании. */
-export const as = (userId: string, tenantId: string | null): Record<string, string> => ({
-  [SESSION_HEADER]: `${userId}:${tenantId ?? ""}`,
+/**
+ * Заголовки запроса от имени сотрудника компании. По умолчанию — с включённой 2FA:
+ * так выглядит полностью вошедший пользователь любой роли.
+ */
+export const as = (
+  userId: string,
+  tenantId: string | null,
+  options: { twoFactor?: boolean } = {},
+): Record<string, string> => ({
+  [SESSION_HEADER]: `${userId}:${tenantId ?? ""}:${options.twoFactor === false ? "" : "2fa"}`,
 });
 
 /** Адрес приложения в тестах: с ним совпадают Host и Origin запросов ко входу. */
