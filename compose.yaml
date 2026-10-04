@@ -23,7 +23,7 @@ services:
       retries: 20
 
   valkey:
-    image: valkey/valkey:8.1.10-alpine3.24 # gitleaks:allow — тег образа, не секрет
+    image: valkey/valkey:9.1.2-alpine3.24 # gitleaks:allow — тег образа, не секрет
     environment:
       VALKEY_PASSWORD: ${VALKEY_PASSWORD:?запустите pnpm dev:up}
     # Без сохранения на диск: в Valkey только временные данные (ADR-0001).
