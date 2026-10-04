@@ -4,6 +4,7 @@ import { loadConfig } from "../src/config/config.js";
 const REQUIRED = {
   DATABASE_URL: "postgres://zvenko_app:s3cr3t-value@db.internal:5432/zvenko",
   IDENTITY_DATABASE_URL: "postgres://zvenko_identity:s3cr3t-value@db.internal:5432/zvenko",
+  WORKER_DATABASE_URL: "postgres://zvenko_worker:s3cr3t-value@db.internal:5432/zvenko",
   AUTH_SECRET: "s3cr3t-value-0123456789-0123456789",
   AUTH_ORIGINS: "http://127.0.0.1:3000",
 };

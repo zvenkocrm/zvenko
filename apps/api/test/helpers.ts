@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { Type } from "@nestjs/common";
+import type { Provider, Type } from "@nestjs/common";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test, type TestingModuleBuilder } from "@nestjs/testing";
 import type { FastifyRequest } from "fastify";
@@ -28,6 +28,10 @@ export interface TestAppOptions {
   readonly databaseUrl?: string;
   /** Подключение ролью модуля входа; по умолчанию тоже недоступная БД. */
   readonly identityUrl?: string;
+  /** Подключение ролью фоновых задач. Без него фоновые задачи в тестовом приложении выключены. */
+  readonly workerUrl?: string;
+  /** Дополнительные провайдеры — например, тестовый подписчик на события. */
+  readonly providers?: Provider[];
   readonly controllers?: Type[];
   /** Вход по тестовому заголовку вместо модуля identity — см. HeaderAuth. */
   readonly headerAuth?: boolean;
@@ -80,6 +84,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     NODE_ENV: "test",
     DATABASE_URL: options.databaseUrl ?? unreachable,
     IDENTITY_DATABASE_URL: options.identityUrl ?? unreachable,
+    WORKER_DATABASE_URL: options.workerUrl ?? unreachable,
+    EVENTS_WORKER: options.workerUrl === undefined ? "off" : "on",
     AUTH_SECRET: randomBytes(32).toString("base64url"),
     // localhost:80 — хост запросов inject по умолчанию; *.zvenko.test — адреса компаний.
     AUTH_ORIGINS: `${TEST_ORIGIN},http://localhost:80,http://*.zvenko.test`,
@@ -94,6 +100,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   let builder = Test.createTestingModule({
     imports: [AppModule.register(config, logger)],
     controllers: options.controllers ?? [],
+    providers: options.providers ?? [],
   });
   if (options.headerAuth === true)
     builder = builder.overrideProvider(AuthPort).useClass(HeaderAuth);

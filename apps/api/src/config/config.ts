@@ -58,6 +58,13 @@ export const configSchema = z
     DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
     /** Подключение ролью модуля входа: схема identity, без данных компаний (ADR-0006). */
     IDENTITY_DATABASE_URL: postgresUrl,
+    /** Подключение ролью фоновых задач: outbox и очередь pg-boss, без данных компаний (ADR-0005). */
+    WORKER_DATABASE_URL: postgresUrl,
+    /**
+     * Запускать ли в этом процессе фоновые задачи: перенос событий в очередь и их обработку.
+     * На пилоте API и фоновые задачи работают одним процессом; позже — отдельными.
+     */
+    EVENTS_WORKER: z.enum(["on", "off"]).default("on"),
     /** Секрет подписи cookie и шифрования модуля входа. В продакшене — из хранилища секретов. */
     AUTH_SECRET: z.string().min(32, "не короче 32 символов"),
     AUTH_ORIGINS: origins,

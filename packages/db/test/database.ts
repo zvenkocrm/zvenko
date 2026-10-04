@@ -33,11 +33,14 @@ export interface TestDatabase {
   /** Роль модуля входа: схема identity и пользователи, без данных компаний. */
   readonly identity: Database;
   readonly identityUrl: string;
+  /** Роль фоновых задач: outbox и очередь pg-boss, без данных компаний. */
+  readonly worker: Database;
+  readonly workerUrl: string;
   stop(): Promise<void>;
 }
 
 /** Роли создаёт инфраструктура — в тестах повторяем это вручную, с теми же ограничениями. */
-const ROLES = ["zvenko_owner", "zvenko_app", "zvenko_identity"] as const;
+const ROLES = ["zvenko_owner", "zvenko_app", "zvenko_identity", "zvenko_worker"] as const;
 
 interface Journal {
   readonly entries: readonly { readonly tag: string }[];
@@ -118,9 +121,11 @@ export async function startTestDatabase(options: TestDatabaseOptions = {}): Prom
 
   const appUrl = urls.get("zvenko_app") ?? "";
   const identityUrl = urls.get("zvenko_identity") ?? "";
+  const workerUrl = urls.get("zvenko_worker") ?? "";
   // Одно соединение: так тесты заодно проверяют, что контекст не «перетекает» между транзакциями.
   const appPool = new pg.Pool({ connectionString: appUrl, max: 1 });
   const identityPool = new pg.Pool({ connectionString: identityUrl, max: 1 });
+  const workerPool = new pg.Pool({ connectionString: workerUrl, max: 1 });
 
   return {
     admin: createDatabase(adminPool),
@@ -130,9 +135,12 @@ export async function startTestDatabase(options: TestDatabaseOptions = {}): Prom
     appUrl,
     identity: createDatabase(identityPool),
     identityUrl,
+    worker: createDatabase(workerPool),
+    workerUrl,
     async stop() {
       await appPool.end();
       await identityPool.end();
+      await workerPool.end();
       await ownerPool.end();
       await adminPool.end();
       await container.stop();
