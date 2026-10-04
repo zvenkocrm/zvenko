@@ -8,7 +8,7 @@
 // Миграции применяет следующий шаг `pnpm dev:up` — `pnpm --filter @zvenko/db db:migrate`.
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const ENV_FILE = ".env";
 const S3_CONFIG = ".dev/seaweedfs/s3.json";
@@ -29,10 +29,20 @@ function parseEnv(text) {
   );
 }
 
+/** Содержимое .env или null, если файла нет. Без отдельной проверки — она устарела бы к записи. */
+function readEnvFile() {
+  try {
+    return readFileSync(ENV_FILE, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 /** Значения, которых нет в .env, создаются; существующие не меняются. */
 function ensureEnv() {
-  const text = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf8") : ENV_HEADER;
-  const env = parseEnv(text);
+  const text = readEnvFile();
+  const env = parseEnv(text ?? "");
   const generators = {
     POSTGRES_PASSWORD: () => secret(),
     VALKEY_PASSWORD: () => secret(),
@@ -52,9 +62,14 @@ function ensureEnv() {
     }
   }
   if (added.length > 0) {
-    const lines = added.map((key) => `${key}=${env[key]}`);
-    const base = text.endsWith("\n") ? text : `${text}\n`;
-    writeFileSync(ENV_FILE, `${base}${lines.join("\n")}\n`, { mode: 0o600 });
+    const lines = `${added.map((key) => `${key}=${env[key]}`).join("\n")}\n`;
+    if (text === null) {
+      // Флаг wx: файл не перезапишется, если его успели создать параллельно.
+      writeFileSync(ENV_FILE, ENV_HEADER + lines, { mode: 0o600, flag: "wx" });
+    } else {
+      // Только дописываем в конец: существующие строки не трогаем.
+      appendFileSync(ENV_FILE, (text.endsWith("\n") ? "" : "\n") + lines, { mode: 0o600 });
+    }
     console.log(`В .env добавлено: ${added.join(", ")}.`);
   }
   return env;
