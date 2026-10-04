@@ -32,6 +32,11 @@ mise.local.toml
 .mise.local.toml
 .claude/settings.local.json
 
+# --- Файлы, которые создают инструменты сами ---
+# Turborepo новее 2.11.4 пишет AGENTS.md с инструкциями для ИИ-агентов. Наши правила для
+# агентов — в CLAUDE.md; при обновлении turbo вернуть в turbo.json "agentGuidance": false.
+AGENTS.md
+
 # --- IDE и ОС ---
 .idea/
 .vscode/*

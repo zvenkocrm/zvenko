@@ -1,4 +1,4 @@
-# Обновления зависимостей (ADR-0008). Пауза 3 дня после выхода версии — защита
+# Обновления зависимостей (ADR-0008). Пауза 7 дней после выхода версии — защита
 # от свежевзломанных пакетов, в дополнение к карантину pnpm.
 # Инструменты из mise.toml Dependabot не видит — их обновляем вручную отдельным PR.
 version: 2
@@ -8,7 +8,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       dev-dependencies:
         dependency-type: development
@@ -19,9 +19,19 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 3
+      default-days: 7
 
   - package-ecosystem: docker-compose
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    # Локальные PostgreSQL и Valkey повторяют версии управляемых сервисов Yandex Cloud
+    # (ADR-0003). Новую мажорную (для Valkey — и минорную) версию берём отдельным решением,
+    # когда облако её поддержит.
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+      - dependency-name: valkey/valkey
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
