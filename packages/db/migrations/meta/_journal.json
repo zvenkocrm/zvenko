@@ -57,6 +57,20 @@
       "when": 1791134860923,
       "tag": "0007_tenant_directory_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791141480065,
+      "tag": "0008_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791141645725,
+      "tag": "0009_audit_log_chain",
+      "breakpoints": true
     }
   ]
 }

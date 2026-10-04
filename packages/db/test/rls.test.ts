@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withAccess, type AccessContext, type Scope } from "../src/access.js";
 import { newId } from "../src/ids.js";
 import { deals, memberships, teams, tenants, users } from "../src/schema/index.js";
-import { pgErrorCode, startTestDatabase, type TestDatabase } from "./database.js";
+import { expectPgError, startTestDatabase, type TestDatabase } from "./database.js";
 import { ids, seed } from "./fixtures.js";
 
 // Коды ошибок PostgreSQL.
@@ -61,15 +61,6 @@ function withoutSubqueries(expr: string): string {
     }
   }
   return out;
-}
-
-async function expectPgError(work: Promise<unknown>, code: string): Promise<void> {
-  const error: unknown = await work.then(
-    () => undefined,
-    (err: unknown) => err,
-  );
-  expect(error, `ожидалась ошибка PostgreSQL ${code}`).toBeDefined();
-  expect(pgErrorCode(error)).toBe(code);
 }
 
 describe("изоляция компаний (SEC-06)", () => {
@@ -271,6 +262,19 @@ describe("каталог БД — защищает и будущие табли�
     for (const row of result.rows) {
       // Голый current_setting(...) вне подзапроса вычислялся бы для каждой строки (PERF-06).
       expect(withoutSubqueries(row.expr), row.policy).not.toMatch(/current_setting\(/i);
+    }
+  });
+
+  it("у функций SECURITY DEFINER закреплён search_path", async () => {
+    // Функция с правами владельца не должна искать объекты в схемах вызывающего:
+    // иначе подложенная им функция или таблица выполнится с правами владельца.
+    const result = await db().ownerPool.query<{ fn: string; config: string[] | null }>(`
+      select p.oid::regprocedure::text as fn, p.proconfig as config
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')`);
+    expect(result.rows.length).toBeGreaterThan(0);
+    for (const row of result.rows) {
+      expect(row.config ?? [], row.fn).toContain("search_path=pg_catalog, pg_temp");
     }
   });
 

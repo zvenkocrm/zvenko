@@ -1,7 +1,21 @@
 import type { LightMyRequestResponse } from "fastify";
-import { accounts, deals, eq, memberships, newId, sessions, sql, users } from "@zvenko/db";
+import {
+  accounts,
+  and,
+  asc,
+  auditLog,
+  deals,
+  eq,
+  memberships,
+  newId,
+  sessions,
+  sql,
+  users,
+  verifyAuditLog,
+} from "@zvenko/db";
 import { ids, seed, startTestDatabase, type TestDatabase } from "@zvenko/db/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AuditService } from "../src/audit/audit.service.js";
 import { IdentityService } from "../src/identity/identity.service.js";
 import { createTestApp, TEST_HOST, TEST_ORIGIN, type TestApp } from "./helpers.js";
 
@@ -59,9 +73,9 @@ const nextIp = (): string => `10.0.0.${String(++lastIp)}`;
 function signIn(
   email: string,
   password: string,
-  options: { ip?: string; headers?: Record<string, string> } = {},
+  options: { ip?: string; headers?: Record<string, string>; target?: TestApp } = {},
 ): Promise<LightMyRequestResponse> {
-  return app().app.inject({
+  return (options.target ?? app()).app.inject({
     method: "POST",
     url: "/api/auth/sign-in/email",
     remoteAddress: options.ip ?? nextIp(),
@@ -252,14 +266,32 @@ describe("сессия в API", () => {
 });
 
 describe("выбор компании в сессии (F-AUTH-06)", () => {
-  const selectTenant = (cookie: string, tenantId: string) =>
-    app().app.inject({
+  const selectTenant = (
+    cookie: string,
+    tenantId: string,
+    options: { ip?: string; headers?: Record<string, string>; target?: TestApp } = {},
+  ) =>
+    (options.target ?? app()).app.inject({
       method: "PUT",
       url: "/api/v1/session/tenant",
-      remoteAddress: nextIp(),
-      headers: { host: TEST_HOST, origin: TEST_ORIGIN, cookie, "content-type": "application/json" },
+      remoteAddress: options.ip ?? nextIp(),
+      headers: {
+        host: TEST_HOST,
+        origin: TEST_ORIGIN,
+        cookie,
+        "content-type": "application/json",
+        ...options.headers,
+      },
       payload: JSON.stringify({ tenantId }),
     });
+
+  /** Записи о входе в компанию из её журнала — напрямую из БД, ролью-владельцем. */
+  const tenantSelections = (tenantId: string) =>
+    db()
+      .owner.select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenantId, tenantId), eq(auditLog.action, "session.tenant_selected")))
+      .orderBy(asc(auditLog.seq));
 
   it("своя компания: 204, и данные компании доступны", async () => {
     const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
@@ -271,13 +303,58 @@ describe("выбор компании в сессии (F-AUTH-06)", () => {
     expect(response.json<{ items: { id: string }[] }>().items.map((d) => d.id)).toEqual([annaDeal]);
   });
 
+  it("вход в компанию записан в её журнал: кто, откуда, какая сессия (F-AUD-01, F-AUD-02)", async () => {
+    const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
+    const ip = nextIp();
+    // Подделка заголовков прокси не меняет IP в журнале: он тот, что увидел сервер.
+    const spoofed = { "x-forwarded-for": "203.0.113.9", "x-real-ip": "203.0.113.9" };
+    const response = await selectTenant(cookie, ids.tenantA, { ip, headers: spoofed });
+    expect(response.statusCode).toBe(204);
+
+    const session = await latestSession();
+    const record = (await tenantSelections(ids.tenantA)).at(-1);
+    expect(record).toMatchObject({
+      actorType: "user",
+      actorId: annaId,
+      result: "success",
+      objectType: "session",
+      objectId: session.id,
+      ip,
+      userAgent: "lightMyRequest",
+      requestId: response.headers["x-request-id"],
+    });
+    expect(await verifyAuditLog(db().owner, ids.tenantA)).toMatchObject({ ok: true });
+  });
+
   it("чужая компания — 404, как несуществующая; выбор не меняется", async () => {
     const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
     expect((await selectTenant(cookie, ids.tenantA)).statusCode).toBe(204);
+    const foreignRecords = (await tenantSelections(ids.tenantB)).length;
 
     expect((await selectTenant(cookie, ids.tenantB)).statusCode).toBe(404);
     expect((await selectTenant(cookie, newId())).statusCode).toBe(404);
     expect((await latestSession()).activeTenantId).toBe(ids.tenantA);
+    // В журнал чужой компании попытка не пишется: пользователь там не работает.
+    expect(await tenantSelections(ids.tenantB)).toHaveLength(foreignRecords);
+  });
+
+  it("запись в журнал не удалась — компания не выбирается: без записи нет действия", async () => {
+    const failing = await createTestApp({
+      databaseUrl: db().appUrl,
+      identityUrl: db().identityUrl,
+      override: (builder) =>
+        builder.overrideProvider(AuditService).useValue({
+          record: () => Promise.reject(new Error("журнал недоступен")),
+        }),
+    });
+    try {
+      const cookie = sessionCookie(await signIn(EMAIL, PASSWORD, { target: failing }));
+      const response = await selectTenant(cookie, ids.tenantA, { target: failing });
+      expect(response.statusCode).toBe(500);
+      expect((await latestSession()).activeTenantId).toBeNull();
+    } finally {
+      await failing.close();
+    }
   });
 
   it("ID компании не в формате UUID — 400", async () => {
