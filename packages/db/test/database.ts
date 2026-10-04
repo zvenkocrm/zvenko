@@ -13,6 +13,8 @@ export interface TestDatabase {
   readonly ownerPool: pg.Pool;
   /** Роль приложения: без BYPASSRLS, не владелец. Через неё проверяем изоляцию. */
   readonly app: Database;
+  /** Адрес подключения ролью приложения — для API в интеграционных тестах. */
+  readonly appUrl: string;
   stop(): Promise<void>;
 }
 
@@ -45,6 +47,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
     owner,
     ownerPool,
     app: createDatabase(appPool),
+    appUrl: appUrl.toString(),
     async stop() {
       await appPool.end();
       await ownerPool.end();
