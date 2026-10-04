@@ -8,6 +8,10 @@ lefthook = "2.1.16"
 opentofu = "1.13.1"
 osv-scanner = "2.6.0"
 
+[env]
+# Без телеметрии инструментов: сведения о разработке не уходят третьим лицам. В CI — то же самое.
+TURBO_TELEMETRY_DISABLED = "1"
+
 [settings]
 # Не ставить инструменты молча: только по `mise install`.
 not_found_auto_install = false
