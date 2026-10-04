@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
-import { accounts, type Database, newId, users } from "@zvenko/db";
+import { accounts, type Database, eq, newId, sessions, users } from "@zvenko/db";
 import { z } from "zod";
 import { ProblemException } from "../http/problem.js";
 import { hashPassword, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "./password.js";
@@ -20,6 +20,17 @@ export type NewUser = z.input<typeof newUserSchema>;
 @Injectable()
 export class IdentityService {
   constructor(@Inject(IDENTITY_DB) private readonly db: Database) {}
+
+  /**
+   * Активная компания сессии (F-AUTH-06). Членство проверяет вызывающий модуль tenancy:
+   * модуль входа данных компаний не видит.
+   */
+  async setActiveTenant(sessionId: string, tenantId: string): Promise<void> {
+    await this.db
+      .update(sessions)
+      .set({ activeTenantId: tenantId, updatedAt: new Date() })
+      .where(eq(sessions.id, sessionId));
+  }
 
   /** Пользователь с паролем — одной транзакцией: без пароля учётная запись не появится. */
   async createUser(input: NewUser): Promise<{ id: string }> {

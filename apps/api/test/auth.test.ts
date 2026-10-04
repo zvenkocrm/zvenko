@@ -251,6 +251,41 @@ describe("сессия в API", () => {
   });
 });
 
+describe("выбор компании в сессии (F-AUTH-06)", () => {
+  const selectTenant = (cookie: string, tenantId: string) =>
+    app().app.inject({
+      method: "PUT",
+      url: "/api/v1/session/tenant",
+      remoteAddress: nextIp(),
+      headers: { host: TEST_HOST, origin: TEST_ORIGIN, cookie, "content-type": "application/json" },
+      payload: JSON.stringify({ tenantId }),
+    });
+
+  it("своя компания: 204, и данные компании доступны", async () => {
+    const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
+    expect((await getDeals(cookie)).statusCode).toBe(403);
+
+    expect((await selectTenant(cookie, ids.tenantA)).statusCode).toBe(204);
+    const response = await getDeals(cookie);
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ items: { id: string }[] }>().items.map((d) => d.id)).toEqual([annaDeal]);
+  });
+
+  it("чужая компания — 404, как несуществующая; выбор не меняется", async () => {
+    const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
+    expect((await selectTenant(cookie, ids.tenantA)).statusCode).toBe(204);
+
+    expect((await selectTenant(cookie, ids.tenantB)).statusCode).toBe(404);
+    expect((await selectTenant(cookie, newId())).statusCode).toBe(404);
+    expect((await latestSession()).activeTenantId).toBe(ids.tenantA);
+  });
+
+  it("ID компании не в формате UUID — 400", async () => {
+    const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
+    expect((await selectTenant(cookie, "neva")).statusCode).toBe(400);
+  });
+});
+
 describe("защита входа", () => {
   it("перебор пароля: шестая попытка за минуту с одного IP — 429 (SEC-04)", async () => {
     const ip = nextIp();
