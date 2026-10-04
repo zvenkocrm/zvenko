@@ -3,7 +3,7 @@
 //    Настоящих секретов прода здесь нет.
 // 2. Создаёт конфиг ключей S3 для SeaweedFS.
 // 3. Запускает сервисы Docker Compose и ждёт их готовности.
-// 4. Создаёт в PostgreSQL роли приложения и модуля входа — как в проде, без прав суперпользователя и BYPASSRLS.
+// 4. Создаёт в PostgreSQL роли приложения, модуля входа и фоновых задач — как в проде, без прав суперпользователя и BYPASSRLS.
 // 5. Ставит git-хуки (lefthook).
 // Миграции применяет следующий шаг `pnpm dev:up` — `pnpm --filter @zvenko/db db:migrate`.
 import { spawnSync } from "node:child_process";
@@ -50,6 +50,7 @@ function ensureEnv() {
     S3_SECRET_KEY: () => secret(),
     APP_DB_PASSWORD: () => secret(),
     IDENTITY_DB_PASSWORD: () => secret(),
+    WORKER_DB_PASSWORD: () => secret(),
     // API подключается ролью приложения (RLS действует), миграции — ролью-владельцем схемы.
     DATABASE_URL: () => `postgres://zvenko_app:${env.APP_DB_PASSWORD}@127.0.0.1:5432/zvenko`,
     MIGRATION_DATABASE_URL: () =>
@@ -57,6 +58,9 @@ function ensureEnv() {
     // Модуль входа — своей ролью: пароли и сессии отдельно от данных компаний (ADR-0006).
     IDENTITY_DATABASE_URL: () =>
       `postgres://zvenko_identity:${env.IDENTITY_DB_PASSWORD}@127.0.0.1:5432/zvenko`,
+    // Фоновые задачи — своей ролью: outbox и очередь pg-boss, без данных компаний (ADR-0005).
+    WORKER_DATABASE_URL: () =>
+      `postgres://zvenko_worker:${env.WORKER_DB_PASSWORD}@127.0.0.1:5432/zvenko`,
     AUTH_SECRET: () => secret(48),
     AUTH_ORIGINS: () => "http://127.0.0.1:3000,http://localhost:3000",
   };
@@ -107,11 +111,15 @@ function run(command, args, input) {
 }
 
 /**
- * Роли приложения и модуля входа: создаются один раз, пароли — из .env. Без прав
+ * Роли приложения, модуля входа и фоновых задач: создаются один раз, пароли — из .env. Без прав
  * суперпользователя и обхода RLS. В проде роли создаёт инфраструктура.
  */
 function ensureRoles(env) {
-  const roles = { zvenko_app: env.APP_DB_PASSWORD, zvenko_identity: env.IDENTITY_DB_PASSWORD };
+  const roles = {
+    zvenko_app: env.APP_DB_PASSWORD,
+    zvenko_identity: env.IDENTITY_DB_PASSWORD,
+    zvenko_worker: env.WORKER_DB_PASSWORD,
+  };
   const sql = Object.entries(roles)
     .map(
       ([role, password]) => `

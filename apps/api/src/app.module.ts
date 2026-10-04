@@ -5,6 +5,7 @@ import type { Config } from "./config/config.js";
 import { ConfigModule } from "./config/config.module.js";
 import { CrmModule } from "./crm/crm.module.js";
 import { DatabaseModule } from "./database/database.module.js";
+import { EventsModule } from "./events/events.module.js";
 import { HealthModule } from "./health/health.module.js";
 import { IdentityModule } from "./identity/identity.module.js";
 import { TenancyModule } from "./tenancy/tenancy.module.js";
@@ -20,6 +21,7 @@ export class AppModule {
         IdentityModule,
         AuditModule,
         TenancyModule,
+        EventsModule,
         HealthModule,
         CrmModule,
       ],
