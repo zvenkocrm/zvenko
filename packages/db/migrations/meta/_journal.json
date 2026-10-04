@@ -43,6 +43,20 @@
       "when": 1791133915792,
       "tag": "0005_two_factor_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791134859222,
+      "tag": "0006_tenant_directory",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791134860923,
+      "tag": "0007_tenant_directory_sync",
+      "breakpoints": true
     }
   ]
 }
