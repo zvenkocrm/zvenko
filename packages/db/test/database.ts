@@ -1,9 +1,13 @@
 import { randomBytes } from "node:crypto";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 import { expect } from "vitest";
 import { createDatabase, type Database } from "../src/client.js";
-import { runMigrations } from "../src/migrate.js";
+import { migrationsFolder, runMigrations } from "../src/migrate.js";
 
 // Тот же образ, что в compose.yaml; мажорная версия — как в Yandex Managed PostgreSQL (ADR-0003).
 const IMAGE = "postgres:18.6-alpine3.24";
@@ -35,7 +39,38 @@ export interface TestDatabase {
 /** Роли создаёт инфраструктура — в тестах повторяем это вручную, с теми же ограничениями. */
 const ROLES = ["zvenko_owner", "zvenko_app", "zvenko_identity"] as const;
 
-export async function startTestDatabase(): Promise<TestDatabase> {
+interface Journal {
+  readonly entries: readonly { readonly tag: string }[];
+}
+
+/**
+ * Копия миграций до `until` включительно — во временной папке. Так тест кладёт данные
+ * между миграциями и проверяет, что следующая миграция их переносит.
+ */
+function migrationsUntil(until: string): string {
+  const journalPath = path.join(migrationsFolder, "meta", "_journal.json");
+  const journal = JSON.parse(readFileSync(journalPath, "utf8")) as Journal;
+  const last = journal.entries.findIndex((entry) => entry.tag === until);
+  if (last === -1) throw new Error(`нет миграции ${until}`);
+  const folder = mkdtempSync(path.join(tmpdir(), "zvenko-migrations-"));
+  mkdirSync(path.join(folder, "meta"));
+  const entries = journal.entries.slice(0, last + 1);
+  for (const { tag } of entries) {
+    cpSync(path.join(migrationsFolder, `${tag}.sql`), path.join(folder, `${tag}.sql`));
+  }
+  writeFileSync(
+    path.join(folder, "meta", "_journal.json"),
+    JSON.stringify({ ...journal, entries }),
+  );
+  return folder;
+}
+
+export interface TestDatabaseOptions {
+  /** Применить миграции только до этой включительно; остальные — `runMigrations(owner)`. */
+  readonly until?: string;
+}
+
+export async function startTestDatabase(options: TestDatabaseOptions = {}): Promise<TestDatabase> {
   const container = await new PostgreSqlContainer(IMAGE).start();
   const databaseUrl = (credentials?: { user: string; password: string }): string => {
     const url = new URL(container.getConnectionUri());
@@ -70,7 +105,16 @@ export async function startTestDatabase(): Promise<TestDatabase> {
   const adminPool = new pg.Pool({ connectionString: databaseUrl(), max: 2 });
   const ownerPool = new pg.Pool({ connectionString: urls.get("zvenko_owner"), max: 1 });
   const owner = createDatabase(ownerPool);
-  await runMigrations(owner);
+  if (options.until === undefined) {
+    await runMigrations(owner);
+  } else {
+    const folder = migrationsUntil(options.until);
+    try {
+      await migrate(owner, { migrationsFolder: folder });
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  }
 
   const appUrl = urls.get("zvenko_app") ?? "";
   const identityUrl = urls.get("zvenko_identity") ?? "";

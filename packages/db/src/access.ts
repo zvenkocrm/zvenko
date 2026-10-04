@@ -29,6 +29,22 @@ function assertScope(value: Scope, field: string): void {
 }
 
 /**
+ * Работа с данными пользователя вне компании — например, справочник его компаний (D30).
+ * В контексте только пользователь: данные компаний без withAccess не видны.
+ */
+export async function withUser<T>(
+  db: Database,
+  userId: string,
+  work: (tx: Transaction) => Promise<T>,
+): Promise<T> {
+  assertUuid(userId, "userId");
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.user_id', ${userId}, true)`);
+    return work(tx);
+  });
+}
+
+/**
  * Выполняет работу в транзакции с контекстом доступа. Настройки выставляются через
  * set_config(…, true) — действуют только до конца транзакции и не «перетекают»
  * в чужие запросы при переиспользовании соединения из пула.
