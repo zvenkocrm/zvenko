@@ -17,7 +17,7 @@ function db(): TestDatabase {
 
 beforeAll(async () => {
   started = await startTestDatabase();
-  await seed(started.owner);
+  await seed(started.admin);
 });
 
 afterAll(async () => {
@@ -43,14 +43,14 @@ const adminOfA = {
 describe("справочник «поддомен → компания» (ADR-0002)", () => {
   it("заполняется сам: и для уже созданных компаний, и для новых", async () => {
     const tenantId = newId();
-    await db().owner.insert(tenants).values({ id: tenantId, name: "Новая", subdomain: "novaya" });
+    await db().admin.insert(tenants).values({ id: tenantId, name: "Новая", subdomain: "novaya" });
     const rows = await db()
-      .owner.select({ subdomain: tenantDirectory.subdomain })
+      .admin.select({ subdomain: tenantDirectory.subdomain })
       .from(tenantDirectory)
       .where(eq(tenantDirectory.tenantId, tenantId));
     expect(rows).toEqual([{ subdomain: "novaya" }]);
 
-    const seeded = await db().owner.select().from(tenantDirectory);
+    const seeded = await db().admin.select().from(tenantDirectory);
     expect(seeded.map((row) => row.subdomain)).toEqual(
       expect.arrayContaining(["company-a", "company-b", "novaya"]),
     );
@@ -59,18 +59,18 @@ describe("справочник «поддомен → компания» (ADR-00
   it("следует за сменой поддомена и исчезает вместе с компанией", async () => {
     const tenantId = newId();
     await db()
-      .owner.insert(tenants)
+      .admin.insert(tenants)
       .values({ id: tenantId, name: "Временная", subdomain: "vremya" });
-    await db().owner.update(tenants).set({ subdomain: "vremya-2" }).where(eq(tenants.id, tenantId));
+    await db().admin.update(tenants).set({ subdomain: "vremya-2" }).where(eq(tenants.id, tenantId));
     const [moved] = await db()
-      .owner.select({ subdomain: tenantDirectory.subdomain })
+      .admin.select({ subdomain: tenantDirectory.subdomain })
       .from(tenantDirectory)
       .where(eq(tenantDirectory.tenantId, tenantId));
     expect(moved?.subdomain).toBe("vremya-2");
 
-    await db().owner.delete(tenants).where(eq(tenants.id, tenantId));
+    await db().admin.delete(tenants).where(eq(tenants.id, tenantId));
     const gone = await db()
-      .owner.select()
+      .admin.select()
       .from(tenantDirectory)
       .where(eq(tenantDirectory.tenantId, tenantId));
     expect(gone).toEqual([]);
@@ -106,7 +106,7 @@ describe("компания меняет только название (F-TEN-01,
       tx.update(tenants).set({ name: "Компания A+" }).where(eq(tenants.id, ids.tenantA)),
     );
     const [row] = await db()
-      .owner.select({ name: tenants.name })
+      .admin.select({ name: tenants.name })
       .from(tenants)
       .where(eq(tenants.id, ids.tenantA));
     expect(row?.name).toBe("Компания A+");

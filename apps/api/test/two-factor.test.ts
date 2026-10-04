@@ -28,7 +28,7 @@ function app(): TestApp {
 
 beforeAll(async () => {
   database = await startTestDatabase();
-  await seed(database.owner);
+  await seed(database.admin);
   testApp = await createTestApp({
     databaseUrl: database.appUrl,
     identityUrl: database.identityUrl,
@@ -44,7 +44,7 @@ beforeAll(async () => {
     name: "Вера",
     password: PASSWORD,
   }));
-  await database.owner.insert(memberships).values([
+  await database.admin.insert(memberships).values([
     { tenantId: ids.tenantA, userId: ownerId, teamId: ids.teamA1, role: "owner" },
     { tenantId: ids.tenantA, userId: managerId, teamId: ids.teamA1, role: "manager" },
   ]);
@@ -96,7 +96,7 @@ const signIn = (email: string) => post("/api/auth/sign-in/email", { email, passw
 /** Сессия получает компанию A — выбор компании появится отдельным эндпоинтом. */
 async function selectTenantA(userId: string): Promise<void> {
   await db()
-    .owner.update(sessions)
+    .admin.update(sessions)
     .set({ activeTenantId: ids.tenantA })
     .where(eq(sessions.userId, userId));
 }
@@ -110,7 +110,7 @@ const getDeals = (sessionCookie: string) =>
 
 async function resetLockout(userId: string): Promise<void> {
   await db()
-    .owner.update(twoFactors)
+    .admin.update(twoFactors)
     .set({ failedVerificationCount: 0, lockedUntil: null })
     .where(eq(twoFactors.userId, userId));
 }
@@ -147,7 +147,7 @@ describe("включение 2FA (F-AUTH-05)", () => {
 
     // Пока код из приложения не подтверждён, 2FA не включена.
     const [before] = await db()
-      .owner.select({ on: users.twoFactorEnabled })
+      .admin.select({ on: users.twoFactorEnabled })
       .from(users)
       .where(eq(users.id, ownerId));
     expect(before?.on).toBe(false);
@@ -159,7 +159,7 @@ describe("включение 2FA (F-AUTH-05)", () => {
     );
     expect(verified.statusCode).toBe(200);
     const [after] = await db()
-      .owner.select({ on: users.twoFactorEnabled })
+      .admin.select({ on: users.twoFactorEnabled })
       .from(users)
       .where(eq(users.id, ownerId));
     expect(after?.on).toBe(true);
@@ -167,7 +167,7 @@ describe("включение 2FA (F-AUTH-05)", () => {
 
   it("секрет и резервные коды хранятся зашифрованными", async () => {
     const [row] = await db()
-      .owner.select({ secret: twoFactors.secret, codes: twoFactors.backupCodes })
+      .admin.select({ secret: twoFactors.secret, codes: twoFactors.backupCodes })
       .from(twoFactors)
       .where(eq(twoFactors.userId, ownerId));
     expect(row?.secret).not.toContain(secret);
@@ -273,7 +273,7 @@ describe("отключение 2FA", () => {
   });
 
   it("таблица 2FA не хранит лишнего: после отключения записи нет", async () => {
-    const rows = await db().owner.execute<{ count: number }>(
+    const rows = await db().admin.execute<{ count: number }>(
       sql`select count(*)::int as count from identity.two_factors where user_id = ${ownerId}`,
     );
     expect(rows.rows).toEqual([{ count: 0 }]);

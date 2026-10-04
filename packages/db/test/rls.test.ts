@@ -19,7 +19,7 @@ function db(): TestDatabase {
 
 beforeAll(async () => {
   started = await startTestDatabase();
-  await seed(started.owner);
+  await seed(started.admin);
 });
 
 afterAll(async () => {
@@ -208,7 +208,7 @@ describe("области видимости внутри компании (F-ROL
 
 describe("каталог БД — защищает и будущие таблицы (ADR-0002)", () => {
   it("на каждой таблице RLS включён и принудителен", async () => {
-    const result = await db().ownerPool.query<{ table: string; rls: boolean; forced: boolean }>(`
+    const result = await db().adminPool.query<{ table: string; rls: boolean; forced: boolean }>(`
       select c.relname as table, c.relrowsecurity as rls, c.relforcerowsecurity as forced
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
@@ -220,7 +220,7 @@ describe("каталог БД — защищает и будущие табли�
   });
 
   it("у каждой таблицы с tenant_id есть ограничивающая политика изоляции", async () => {
-    const result = await db().ownerPool.query<{ table: string; isolated: boolean }>(`
+    const result = await db().adminPool.query<{ table: string; isolated: boolean }>(`
       select c.relname as table,
              exists (select 1 from pg_policies p
                      where p.schemaname = 'public' and p.tablename = c.relname
@@ -238,7 +238,7 @@ describe("каталог БД — защищает и будущие табли�
   });
 
   it("роль приложения — без суперпользователя и обхода RLS, ничем не владеет", async () => {
-    const role = await db().ownerPool.query<{ super: boolean; bypass: boolean; owned: string }>(`
+    const role = await db().adminPool.query<{ super: boolean; bypass: boolean; owned: string }>(`
       select r.rolsuper as super, r.rolbypassrls as bypass,
              (select count(*) from pg_tables t where t.tableowner = r.rolname) as owned
       from pg_roles r where r.rolname = 'zvenko_app'`);
@@ -246,7 +246,7 @@ describe("каталог БД — защищает и будущие табли�
   });
 
   it("роль приложения не может создавать и менять пользователей и компании", async () => {
-    const grants = await db().ownerPool.query<{ table: string; privilege: string }>(`
+    const grants = await db().adminPool.query<{ table: string; privilege: string }>(`
       select table_name as table, privilege_type as privilege
       from information_schema.role_table_grants
       where grantee = 'zvenko_app' and table_name in ('users', 'tenants')
@@ -255,7 +255,7 @@ describe("каталог БД — защищает и будущие табли�
   });
 
   it("настройки контекста в политиках обёрнуты в подзапрос (вычисляются один раз)", async () => {
-    const result = await db().ownerPool.query<{ policy: string; expr: string }>(`
+    const result = await db().adminPool.query<{ policy: string; expr: string }>(`
       select policyname as policy, coalesce(qual, '') || ' ' || coalesce(with_check, '') as expr
       from pg_policies where schemaname = 'public'`);
     expect(result.rows.length).toBeGreaterThan(0);
@@ -265,10 +265,20 @@ describe("каталог БД — защищает и будущие табли�
     }
   });
 
+  it("таблицами владеет роль без суперпользователя и обхода RLS — как в продакшене", async () => {
+    const result = await db().adminPool.query<{ owner: string; super: boolean; bypass: boolean }>(`
+      select distinct r.rolname as owner, r.rolsuper as super, r.rolbypassrls as bypass
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_roles r on r.oid = c.relowner
+      where c.relkind = 'r' and n.nspname in ('public', 'identity', 'platform', 'audit')`);
+    expect(result.rows).toEqual([{ owner: "zvenko_owner", super: false, bypass: false }]);
+  });
+
   it("у функций SECURITY DEFINER закреплён search_path", async () => {
     // Функция с правами владельца не должна искать объекты в схемах вызывающего:
     // иначе подложенная им функция или таблица выполнится с правами владельца.
-    const result = await db().ownerPool.query<{ fn: string; config: string[] | null }>(`
+    const result = await db().adminPool.query<{ fn: string; config: string[] | null }>(`
       select p.oid::regprocedure::text as fn, p.proconfig as config
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')`);

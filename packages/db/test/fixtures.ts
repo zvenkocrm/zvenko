@@ -24,30 +24,30 @@ export const ids = {
   dealB1: newId(),
 } as const;
 
-/** Данные кладёт владелец схемы — для него RLS не действует. */
-export async function seed(owner: Database): Promise<void> {
-  await owner.insert(tenants).values([
+/** Данные кладёт администратор БД (суперпользователь) — для него RLS не действует. */
+export async function seed(admin: Database): Promise<void> {
+  await admin.insert(tenants).values([
     { id: ids.tenantA, name: "Компания A", subdomain: "company-a" },
     { id: ids.tenantB, name: "Компания B", subdomain: "company-b" },
   ]);
-  await owner.insert(users).values([
+  await admin.insert(users).values([
     { id: ids.userA1, email: "a1@example.test", name: "A1" },
     { id: ids.userA2, email: "a2@example.test", name: "A2" },
     { id: ids.userA3, email: "a3@example.test", name: "A3" },
     { id: ids.userB1, email: "b1@example.test", name: "B1" },
   ]);
-  await owner.insert(teams).values([
+  await admin.insert(teams).values([
     { tenantId: ids.tenantA, id: ids.teamA1, name: "A1" },
     { tenantId: ids.tenantA, id: ids.teamA2, name: "A2" },
     { tenantId: ids.tenantB, id: ids.teamB1, name: "B1" },
   ]);
-  await owner.insert(memberships).values([
+  await admin.insert(memberships).values([
     { tenantId: ids.tenantA, userId: ids.userA1, teamId: ids.teamA1, role: "manager" },
     { tenantId: ids.tenantA, userId: ids.userA2, teamId: ids.teamA1, role: "manager" },
     { tenantId: ids.tenantA, userId: ids.userA3, teamId: ids.teamA2, role: "manager" },
     { tenantId: ids.tenantB, userId: ids.userB1, teamId: ids.teamB1, role: "owner" },
   ]);
-  await owner.insert(deals).values([
+  await admin.insert(deals).values([
     { tenantId: ids.tenantA, id: ids.dealA1, title: "A1", ownerId: ids.userA1, teamId: ids.teamA1 },
     { tenantId: ids.tenantA, id: ids.dealA2, title: "A2", ownerId: ids.userA2, teamId: ids.teamA1 },
     { tenantId: ids.tenantA, id: ids.dealA3, title: "A3", ownerId: ids.userA3, teamId: ids.teamA2 },

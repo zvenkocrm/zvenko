@@ -52,7 +52,7 @@ function app(): TestApp {
 
 beforeAll(async () => {
   database = await startTestDatabase();
-  await seed(database.owner);
+  await seed(database.admin);
   testApp = await createTestApp({ databaseUrl: database.appUrl, headerAuth: true });
 });
 
