@@ -11,8 +11,9 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev:up": "node scripts/dev-up.mjs",
+    "dev:up": "node scripts/dev-up.mjs && turbo run build --filter=@zvenko/db && pnpm --filter @zvenko/db db:migrate",
     "dev:down": "docker compose down",
+    "dev:api": "turbo run build --filter=@zvenko/api... && node --env-file=.env --enable-source-maps apps/api/dist/main.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint --max-warnings=0 . && turbo run lint",

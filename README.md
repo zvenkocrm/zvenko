@@ -18,7 +18,8 @@ CRM для малого бизнеса, в которой всё общение 
 ```sh
 mise install    # Node.js, pnpm и инструменты — версии из mise.toml
 pnpm install
-pnpm dev:up     # PostgreSQL, Valkey, S3, почта + git-хуки
+pnpm dev:up     # PostgreSQL, Valkey, S3, почта, миграции + git-хуки
+pnpm dev:api    # API на http://127.0.0.1:3000
 ```
 
 Проверки — те же, что в CI:

@@ -5,12 +5,25 @@
   "description": "Схема БД, миграции и изоляция данных компаний (RLS) — ADR-0002",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "development": "./test/testing.ts"
+    }
   },
+  "files": [
+    "dist",
+    "migrations"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=../../.env dist/migrate-cli.js"
   },
   "dependencies": {
     "drizzle-orm": "0.45.3",

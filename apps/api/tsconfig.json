@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Внедрение зависимостей NestJS читает типы параметров конструктора из метаданных декораторов.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    // Пакеты монорепозитория — из исходников: проверка типов и тесты не ждут сборки.
+    "customConditions": ["development"]
+  },
+  "include": ["src", "test", "vitest.config.ts"]
+}
