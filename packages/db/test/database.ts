@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import pg from "pg";
+import { expect } from "vitest";
 import { createDatabase, type Database } from "../src/client.js";
 import { runMigrations } from "../src/migrate.js";
 
@@ -76,4 +77,14 @@ export function pgErrorCode(error: unknown): string | undefined {
   const err = error as { code?: unknown; cause?: { code?: unknown } };
   const code = err.code ?? err.cause?.code;
   return typeof code === "string" ? code : undefined;
+}
+
+/** Ждёт, что работа завершится ошибкой PostgreSQL с этим кодом. */
+export async function expectPgError(work: Promise<unknown>, code: string): Promise<void> {
+  const error: unknown = await work.then(
+    () => undefined,
+    (err: unknown) => err,
+  );
+  expect(error, `ожидалась ошибка PostgreSQL ${code}`).toBeDefined();
+  expect(pgErrorCode(error)).toBe(code);
 }
