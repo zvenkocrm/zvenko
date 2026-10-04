@@ -19,7 +19,7 @@ function app(): TestApp {
 
 beforeAll(async () => {
   database = await startTestDatabase();
-  await seed(database.owner);
+  await seed(database.admin);
   testApp = await createTestApp({ databaseUrl: database.appUrl, headerAuth: true });
 });
 
@@ -42,19 +42,19 @@ const dealIds = async (headers: Record<string, string>): Promise<string[]> => {
 
 const sorted = (values: string[]) => [...values].sort();
 
-/** Меняет роль сотрудника на время теста — владельцем схемы, в обход RLS. */
+/** Меняет роль сотрудника на время теста — администратором БД, в обход RLS. */
 async function withRole(userId: string, role: string, check: () => Promise<void>): Promise<void> {
   const where = and(eq(memberships.tenantId, ids.tenantA), eq(memberships.userId, userId));
   const [before] = await db()
-    .owner.select({ role: memberships.role })
+    .admin.select({ role: memberships.role })
     .from(memberships)
     .where(where);
-  await db().owner.update(memberships).set({ role }).where(where);
+  await db().admin.update(memberships).set({ role }).where(where);
   try {
     await check();
   } finally {
     await db()
-      .owner.update(memberships)
+      .admin.update(memberships)
       .set({ role: before?.role ?? "manager" })
       .where(where);
   }
@@ -186,16 +186,16 @@ describe("изменения прав действуют сразу (F-USR-05, F
   it("отключённый сотрудник теряет доступ на следующем запросе", async () => {
     const userId = newId();
     await db()
-      .owner.insert(users)
+      .admin.insert(users)
       .values({ id: userId, email: `${userId}@example.test`, name: "Новый" });
     await db()
-      .owner.insert(memberships)
+      .admin.insert(memberships)
       .values({ tenantId: ids.tenantA, userId, teamId: ids.teamA1, role: "manager" });
 
     expect((await get("/api/v1/deals", as(userId, ids.tenantA))).statusCode).toBe(200);
 
     await db()
-      .owner.delete(memberships)
+      .admin.delete(memberships)
       .where(and(eq(memberships.tenantId, ids.tenantA), eq(memberships.userId, userId)));
 
     expect((await get("/api/v1/deals", as(userId, ids.tenantA))).statusCode).toBe(403);

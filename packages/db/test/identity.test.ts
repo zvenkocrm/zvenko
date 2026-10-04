@@ -25,7 +25,7 @@ function db(): TestDatabase {
 
 beforeAll(async () => {
   started = await startTestDatabase();
-  await seed(started.owner);
+  await seed(started.admin);
 });
 
 afterAll(async () => {
@@ -43,7 +43,7 @@ async function errorCode(work: () => Promise<unknown>): Promise<string | undefin
 
 describe("роль приложения не видит данные входа (ADR-0006)", () => {
   it("у роли приложения нет доступа к схеме identity", async () => {
-    const result = await db().owner.execute<{ usage: boolean }>(
+    const result = await db().admin.execute<{ usage: boolean }>(
       sql`select has_schema_privilege('zvenko_app', 'identity', 'USAGE') as usage`,
     );
     expect(result.rows).toEqual([{ usage: false }]);
@@ -56,9 +56,10 @@ describe("роль приложения не видит данные входа 
   });
 
   it("новые таблицы схемы identity получают права роли входа автоматически", async () => {
+    // Таблицу создаёт владелец схемы — так её создаст будущая миграция.
     await db().owner.execute(sql`create table identity.future_table (id int)`);
     try {
-      const result = await db().owner.execute<{ identity: boolean; app: boolean }>(
+      const result = await db().admin.execute<{ identity: boolean; app: boolean }>(
         sql`select has_table_privilege('zvenko_identity', 'identity.future_table', 'SELECT') as identity,
                    has_table_privilege('zvenko_app', 'identity.future_table', 'SELECT') as app`,
       );

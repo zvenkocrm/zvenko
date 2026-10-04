@@ -23,7 +23,7 @@ function db(): TestDatabase {
 
 beforeAll(async () => {
   started = await startTestDatabase();
-  await seed(started.owner);
+  await seed(started.admin);
 });
 
 afterAll(async () => {
@@ -44,7 +44,7 @@ async function newTenant(): Promise<string> {
   const id = newId();
   tenantCount++;
   await db()
-    .owner.insert(tenants)
+    .admin.insert(tenants)
     .values({ id, name: "Журнал", subdomain: `audit-${String(tenantCount)}` });
   return id;
 }
@@ -72,7 +72,7 @@ async function journalWith(count: number): Promise<string> {
 
 const rowsOf = (tenantId: string) =>
   db()
-    .owner.select()
+    .admin.select()
     .from(auditLog)
     .where(eq(auditLog.tenantId, tenantId))
     .orderBy(asc(auditLog.seq));
@@ -98,7 +98,7 @@ describe("запись в журнал (F-AUD-02)", () => {
     const times = rows.map((row) => row.occurredAt.getTime());
     expect(times).toEqual([...times].sort((a, b) => a - b));
 
-    expect(await verifyAuditLog(db().owner, tenantId)).toEqual({ ok: true, entries: 3 });
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({ ok: true, entries: 3 });
   });
 
   it("хэш в БД и в проверке считается одинаково — на неудобных значениях", async () => {
@@ -128,7 +128,7 @@ describe("запись в журнал (F-AUD-02)", () => {
       userAgent: "",
       details: { emoji: "👩‍💻", big: 9007199254740991, huge: 1e21, small: 0.1 },
     });
-    expect(await verifyAuditLog(db().owner, tenantId)).toEqual({ ok: true, entries: 3 });
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({ ok: true, entries: 3 });
   });
 
   it("у каждой компании своя цепочка", async () => {
@@ -136,8 +136,8 @@ describe("запись в журнал (F-AUD-02)", () => {
     expect((await append(first)).seq).toBe(1);
     expect((await append(second)).seq).toBe(1);
     expect((await append(first)).seq).toBe(2);
-    expect(await verifyAuditLog(db().owner, first)).toEqual({ ok: true, entries: 2 });
-    expect(await verifyAuditLog(db().owner, second)).toEqual({ ok: true, entries: 1 });
+    expect(await verifyAuditLog(db().admin, first)).toEqual({ ok: true, entries: 2 });
+    expect(await verifyAuditLog(db().admin, second)).toEqual({ ok: true, entries: 1 });
   });
 
   it("проверку можно запустить ролью приложения в контексте компании", async () => {
@@ -165,9 +165,9 @@ describe("запись в журнал (F-AUD-02)", () => {
     );
   });
 
-  it("номер, время и хэши, присланные владельцем схемы, триггер перезаписывает", async () => {
+  it("номер, время и хэши, присланные администратором БД, триггер перезаписывает", async () => {
     const tenantId = await newTenant();
-    const { rows } = await db().ownerPool.query<{ seq: string; year: number }>(
+    const { rows } = await db().adminPool.query<{ seq: string; year: number }>(
       `insert into audit_log (tenant_id, actor_type, action, result, seq, occurred_at,
                               hash_version, prev_hash, hash)
        values ($1, 'system', 'session.tenant_selected', 'success', 100, '2000-01-01', 9,
@@ -177,7 +177,7 @@ describe("запись в журнал (F-AUD-02)", () => {
     );
     expect(rows[0]?.seq).toBe("1");
     expect(rows[0]?.year).toBeGreaterThan(2000);
-    expect(await verifyAuditLog(db().owner, tenantId)).toEqual({ ok: true, entries: 1 });
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({ ok: true, entries: 1 });
   });
 
   it.each<[string, Partial<AuditEntry>]>([
@@ -205,7 +205,7 @@ describe("изоляция журналов компаний (SEC-06)", () => {
       PERMISSION_DENIED,
     );
     // Отклонённая запись не оставила следа в чужой цепочке.
-    expect(await verifyAuditLog(db().owner, foreign)).toEqual({ ok: true, entries: 0 });
+    expect(await verifyAuditLog(db().admin, foreign)).toEqual({ ok: true, entries: 0 });
   });
 
   it("компания видит только свой журнал и голову своей цепочки", async () => {
@@ -248,23 +248,34 @@ describe("записи нельзя изменить или удалить (F-AU
   it.each([
     ["UPDATE", "update audit_log set action = 'session.forged' where tenant_id = $1"],
     ["DELETE", "delete from audit_log where tenant_id = $1"],
-  ])("владелец схемы: %s запрещён триггером", async (operation, statement) => {
+  ])("администратор БД: %s запрещён триггером", async (operation, statement) => {
     const tenantId = await journalWith(1);
-    await expect(db().ownerPool.query(statement, [tenantId])).rejects.toThrow(
+    await expect(db().adminPool.query(statement, [tenantId])).rejects.toThrow(
       `журнал аудита только дописывается: ${operation} запрещён`,
     );
   });
 
-  it("владелец схемы: TRUNCATE запрещён триггером", async () => {
+  it("владелец схемы не видит и не меняет записи: RLS действует и на него", async () => {
+    const tenantId = await journalWith(1);
+    const visible = await db().owner.select().from(auditLog).where(eq(auditLog.tenantId, tenantId));
+    expect(visible).toEqual([]);
+    const updated = await db().owner.execute(
+      sql`update audit_log set action = 'session.forged' where tenant_id = ${tenantId}`,
+    );
+    expect(updated.rowCount).toBe(0);
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({ ok: true, entries: 1 });
+  });
+
+  it("администратор БД: TRUNCATE запрещён триггером", async () => {
     await journalWith(1);
-    await expect(db().ownerPool.query("truncate audit_log")).rejects.toThrow(
+    await expect(db().adminPool.query("truncate audit_log")).rejects.toThrow(
       "журнал аудита только дописывается: TRUNCATE запрещён",
     );
   });
 
   it("компания с журналом удаляется только с явной очисткой журнала; правка запрещена и тогда", async () => {
     const tenantId = await journalWith(2);
-    const client = await db().ownerPool.connect();
+    const client = await db().adminPool.connect();
     try {
       await expect(client.query("delete from tenants where id = $1", [tenantId])).rejects.toThrow(
         "журнал аудита только дописывается: DELETE запрещён",
@@ -289,7 +300,7 @@ describe("записи нельзя изменить или удалить (F-AU
     }
     expect(await rowsOf(tenantId)).toEqual([]);
     const heads = await db()
-      .owner.select()
+      .admin.select()
       .from(auditChainHeads)
       .where(eq(auditChainHeads.tenantId, tenantId));
     expect(heads).toEqual([]);
@@ -297,11 +308,11 @@ describe("записи нельзя изменить или удалить (F-AU
 });
 
 /**
- * Подмена в обход триггера — так может действовать только владелец схемы или тот, кто
- * получил его права: отключает защиту, меняет данные, включает защиту обратно.
+ * Подмена в обход триггера — так может действовать только администратор БД (суперпользователь)
+ * или тот, кто получил его права: отключает защиту, меняет данные, включает защиту обратно.
  */
 async function tamper(statement: string, params: unknown[]): Promise<void> {
-  const client = await db().ownerPool.connect();
+  const client = await db().adminPool.connect();
   try {
     await client.query("begin");
     await client.query("alter table audit_log disable trigger audit_log_immutable");
@@ -341,7 +352,7 @@ describe("проверка цепочки находит подмену (SEC-07)
   ])("изменено поле «%s» — запись 2 не совпадает с хэшем", async (_field, assignment) => {
     const tenantId = await journalWith(3);
     await tamper(`update audit_log set ${assignment} where tenant_id = $1 and seq = 2`, [tenantId]);
-    expect(await verifyAuditLog(db().owner, tenantId)).toEqual({
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({
       ok: false,
       seq: 2,
       problem: "hash",
@@ -357,7 +368,7 @@ describe("проверка цепочки находит подмену (SEC-07)
     await tamper(`update audit_log set hash = ${ROW_HASH} where tenant_id = $1 and seq = 2`, [
       tenantId,
     ]);
-    expect(await verifyAuditLog(db().owner, tenantId)).toEqual({
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({
       ok: false,
       seq: 3,
       problem: "link",
@@ -367,7 +378,7 @@ describe("проверка цепочки находит подмену (SEC-07)
   it("удалена запись из середины", async () => {
     const tenantId = await journalWith(3);
     await tamper("delete from audit_log where tenant_id = $1 and seq = 2", [tenantId]);
-    expect(await verifyAuditLog(db().owner, tenantId)).toEqual({
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({
       ok: false,
       seq: 2,
       problem: "sequence",
@@ -377,7 +388,7 @@ describe("проверка цепочки находит подмену (SEC-07)
   it("удалены последние записи — цепочка не доходит до головы", async () => {
     const tenantId = await journalWith(3);
     await tamper("delete from audit_log where tenant_id = $1 and seq = 3", [tenantId]);
-    expect(await verifyAuditLog(db().owner, tenantId)).toEqual({
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({
       ok: false,
       seq: 3,
       problem: "head",
@@ -386,9 +397,9 @@ describe("проверка цепочки находит подмену (SEC-07)
 
   it("проверка идёт пачками и не теряет записи на их границе", async () => {
     const tenantId = await journalWith(5);
-    expect(await verifyAuditLog(db().owner, tenantId, 2)).toEqual({ ok: true, entries: 5 });
+    expect(await verifyAuditLog(db().admin, tenantId, 2)).toEqual({ ok: true, entries: 5 });
     await tamper("delete from audit_log where tenant_id = $1 and seq = 3", [tenantId]);
-    expect(await verifyAuditLog(db().owner, tenantId, 2)).toEqual({
+    expect(await verifyAuditLog(db().admin, tenantId, 2)).toEqual({
       ok: false,
       seq: 3,
       problem: "sequence",
@@ -416,7 +427,7 @@ describe("очередь записей одной компании", () => {
     } finally {
       await pool.end();
     }
-    expect(await verifyAuditLog(db().owner, tenantId)).toEqual({ ok: true, entries: 12 });
+    expect(await verifyAuditLog(db().admin, tenantId)).toEqual({ ok: true, entries: 12 });
   });
 
   it("запись компании ждёт незавершённую запись той же компании, другая компания — нет; откат не оставляет дыр", async () => {
@@ -462,7 +473,7 @@ describe("очередь записей одной компании", () => {
     } finally {
       await pool.end();
     }
-    expect(await verifyAuditLog(db().owner, first)).toEqual({ ok: true, entries: 1 });
+    expect(await verifyAuditLog(db().admin, first)).toEqual({ ok: true, entries: 1 });
   });
 });
 
@@ -483,7 +494,7 @@ describe("каталог БД — журнал аудита", () => {
   const SET_BY_TRIGGER = ["seq", "occurred_at", "hash_version", "prev_hash", "hash"];
 
   it("роль приложения: чтение и вставка содержимого; UPDATE, DELETE, TRUNCATE не выданы", async () => {
-    const { rows } = await db().ownerPool.query<{ privilege: string; granted: boolean }>(`
+    const { rows } = await db().adminPool.query<{ privilege: string; granted: boolean }>(`
       select privilege, has_table_privilege('zvenko_app', 'audit_log', privilege) as granted
       from unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'])
         as privilege`);
@@ -500,7 +511,7 @@ describe("каталог БД — журнал аудита", () => {
   });
 
   it("вставка разрешена в колонки содержимого и запрещена в колонки триггера", async () => {
-    const { rows } = await db().ownerPool.query<{ column: string; granted: boolean }>(
+    const { rows } = await db().adminPool.query<{ column: string; granted: boolean }>(
       `select attname as column, has_column_privilege('zvenko_app', 'audit_log', attname, 'INSERT') as granted
        from pg_attribute where attrelid = 'audit_log'::regclass and attnum > 0 and not attisdropped`,
     );
@@ -514,7 +525,7 @@ describe("каталог БД — журнал аудита", () => {
   });
 
   it("голова цепочки: RLS с изоляцией компаний, приложению — только чтение", async () => {
-    const { rows } = await db().ownerPool.query<{
+    const { rows } = await db().adminPool.query<{
       rls: boolean;
       isolated: boolean;
       select: boolean;

@@ -39,20 +39,20 @@ function app(): TestApp {
 
 beforeAll(async () => {
   database = await startTestDatabase();
-  await seed(database.owner);
+  await seed(database.admin);
   testApp = await createTestApp({
     databaseUrl: database.appUrl,
     identityUrl: database.identityUrl,
   });
 
-  // Сотрудник компании A с паролем: создаёт модуль входа, членство и сделку — владелец схемы.
+  // Сотрудник компании A с паролем: создаёт модуль входа, членство и сделку — администратор БД.
   ({ id: annaId } = await testApp.app
     .get(IdentityService)
     .createUser({ email: "Anna@Example.test", name: "Анна", password: PASSWORD }));
-  await database.owner
+  await database.admin
     .insert(memberships)
     .values({ tenantId: ids.tenantA, userId: annaId, teamId: ids.teamA1, role: "manager" });
-  await database.owner.insert(deals).values({
+  await database.admin.insert(deals).values({
     tenantId: ids.tenantA,
     id: annaDeal,
     title: "Макет моста",
@@ -104,10 +104,10 @@ function sessionCookie(response: LightMyRequestResponse): string {
 const getDeals = (cookie: string) =>
   app().app.inject({ method: "GET", url: "/api/v1/deals", headers: { host: TEST_HOST, cookie } });
 
-/** Последняя сессия Анны — напрямую из БД, ролью-владельцем. */
+/** Последняя сессия Анны — напрямую из БД, администратором. */
 async function latestSession() {
   const [row] = await db()
-    .owner.select()
+    .admin.select()
     .from(sessions)
     .where(eq(sessions.userId, annaId))
     .orderBy(sql`${sessions.createdAt} desc`)
@@ -140,7 +140,7 @@ describe("вход по почте и паролю (F-AUTH-01)", () => {
 
   it("пароль хранится только как хэш argon2id", async () => {
     const [account] = await db()
-      .owner.select({ password: accounts.password })
+      .admin.select({ password: accounts.password })
       .from(accounts)
       .where(eq(accounts.userId, annaId));
     expect(account?.password?.startsWith("$argon2id$")).toBe(true);
@@ -172,7 +172,7 @@ describe("закрытая система (D15)", () => {
     });
     expect(response.statusCode).toBe(404);
     const created = await db()
-      .owner.select()
+      .admin.select()
       .from(users)
       .where(eq(users.email, "new@example.test"));
     expect(created).toEqual([]);
@@ -202,7 +202,7 @@ describe("сессия в API", () => {
 
     const session = await latestSession();
     await db()
-      .owner.update(sessions)
+      .admin.update(sessions)
       .set({ activeTenantId: ids.tenantA })
       .where(eq(sessions.id, session.id));
 
@@ -215,7 +215,7 @@ describe("сессия в API", () => {
     const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
     const session = await latestSession();
     await db()
-      .owner.update(sessions)
+      .admin.update(sessions)
       .set({ activeTenantId: ids.tenantB })
       .where(eq(sessions.id, session.id));
     expect((await getDeals(cookie)).statusCode).toBe(403);
@@ -225,7 +225,7 @@ describe("сессия в API", () => {
     const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
     const session = await latestSession();
     await db()
-      .owner.update(sessions)
+      .admin.update(sessions)
       .set({ activeTenantId: ids.tenantA, expiresAt: new Date(Date.now() - 60_000) })
       .where(eq(sessions.id, session.id));
     expect((await getDeals(cookie)).statusCode).toBe(401);
@@ -235,12 +235,12 @@ describe("сессия в API", () => {
     const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
     const session = await latestSession();
     await db()
-      .owner.update(sessions)
+      .admin.update(sessions)
       .set({ activeTenantId: ids.tenantA, createdAt: new Date(Date.now() - 31 * 24 * 3600 * 1000) })
       .where(eq(sessions.id, session.id));
 
     expect((await getDeals(cookie)).statusCode).toBe(401);
-    const left = await db().owner.select().from(sessions).where(eq(sessions.id, session.id));
+    const left = await db().admin.select().from(sessions).where(eq(sessions.id, session.id));
     expect(left).toEqual([]);
   });
 
@@ -248,7 +248,7 @@ describe("сессия в API", () => {
     const cookie = sessionCookie(await signIn(EMAIL, PASSWORD));
     const session = await latestSession();
     await db()
-      .owner.update(sessions)
+      .admin.update(sessions)
       .set({ activeTenantId: ids.tenantA })
       .where(eq(sessions.id, session.id));
     expect((await getDeals(cookie)).statusCode).toBe(200);
@@ -285,10 +285,10 @@ describe("выбор компании в сессии (F-AUTH-06)", () => {
       payload: JSON.stringify({ tenantId }),
     });
 
-  /** Записи о входе в компанию из её журнала — напрямую из БД, ролью-владельцем. */
+  /** Записи о входе в компанию из её журнала — напрямую из БД, администратором. */
   const tenantSelections = (tenantId: string) =>
     db()
-      .owner.select()
+      .admin.select()
       .from(auditLog)
       .where(and(eq(auditLog.tenantId, tenantId), eq(auditLog.action, "session.tenant_selected")))
       .orderBy(asc(auditLog.seq));
@@ -323,7 +323,7 @@ describe("выбор компании в сессии (F-AUTH-06)", () => {
       userAgent: "lightMyRequest",
       requestId: response.headers["x-request-id"],
     });
-    expect(await verifyAuditLog(db().owner, ids.tenantA)).toMatchObject({ ok: true });
+    expect(await verifyAuditLog(db().admin, ids.tenantA)).toMatchObject({ ok: true });
   });
 
   it("чужая компания — 404, как несуществующая; выбор не меняется", async () => {
@@ -397,7 +397,7 @@ describe("создание пользователя на сервере", () => 
 
   it("почта сохраняется в нижнем регистре и подтверждённой", async () => {
     const [row] = await db()
-      .owner.select({ email: users.email, verified: users.emailVerified })
+      .admin.select({ email: users.email, verified: users.emailVerified })
       .from(users)
       .where(eq(users.id, annaId));
     expect(row).toEqual({ email: EMAIL, verified: true });

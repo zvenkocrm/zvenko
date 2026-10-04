@@ -7,11 +7,21 @@ import { runMigrations } from "../src/migrate.js";
 
 // Тот же образ, что в compose.yaml; мажорная версия — как в Yandex Managed PostgreSQL (ADR-0003).
 const IMAGE = "postgres:18.6-alpine3.24";
+const DATABASE = "zvenko";
 
 export interface TestDatabase {
-  /** Владелец схемы (суперпользователь контейнера): миграции и подготовка данных. RLS не действует. */
+  /**
+   * Администратор БД — суперпользователь контейнера: подготовка данных и проверки в обход RLS.
+   * У приложения в продакшене такой роли нет.
+   */
+  readonly admin: Database;
+  readonly adminPool: pg.Pool;
+  /**
+   * Владелец схемы, как в Yandex Managed PostgreSQL: без суперпользователя и обхода RLS.
+   * Он применяет миграции, поэтому функции SECURITY DEFINER и права по умолчанию работают
+   * в тестах так же, как в продакшене.
+   */
   readonly owner: Database;
-  readonly ownerPool: pg.Pool;
   /** Роль приложения: без BYPASSRLS, не владелец. Через неё проверяем изоляцию. */
   readonly app: Database;
   /** Адрес подключения ролью приложения — для API в интеграционных тестах. */
@@ -23,30 +33,42 @@ export interface TestDatabase {
 }
 
 /** Роли создаёт инфраструктура — в тестах повторяем это вручную, с теми же ограничениями. */
-const ROLES = ["zvenko_app", "zvenko_identity"] as const;
+const ROLES = ["zvenko_owner", "zvenko_app", "zvenko_identity"] as const;
 
 export async function startTestDatabase(): Promise<TestDatabase> {
   const container = await new PostgreSqlContainer(IMAGE).start();
-  const ownerPool = new pg.Pool({ connectionString: container.getConnectionUri(), max: 2 });
+  const databaseUrl = (credentials?: { user: string; password: string }): string => {
+    const url = new URL(container.getConnectionUri());
+    url.pathname = `/${DATABASE}`;
+    if (credentials) {
+      url.username = credentials.user;
+      url.password = credentials.password;
+    }
+    return url.toString();
+  };
 
+  // Роли и базу создаёт суперпользователь — так их создаёт инфраструктура в облаке.
   const urls = new Map<string, string>();
-  const client = await ownerPool.connect();
+  const setup = new pg.Client({ connectionString: container.getConnectionUri() });
+  await setup.connect();
   try {
     for (const role of ROLES) {
       const password = randomBytes(18).toString("base64url");
-      await client.query(
-        `create role ${role} login password ${client.escapeLiteral(password)}
+      await setup.query(
+        `create role ${role} login password ${setup.escapeLiteral(password)}
          nosuperuser nobypassrls nocreatedb nocreaterole`,
       );
-      const url = new URL(container.getConnectionUri());
-      url.username = role;
-      url.password = password;
-      urls.set(role, url.toString());
+      urls.set(role, databaseUrl({ user: role, password }));
     }
+    // База принадлежит владельцу схемы: он создаёт схемы и таблицы. Схема public
+    // в PostgreSQL 15+ принадлежит владельцу базы.
+    await setup.query(`create database ${DATABASE} owner zvenko_owner`);
   } finally {
-    client.release();
+    await setup.end();
   }
 
+  const adminPool = new pg.Pool({ connectionString: databaseUrl(), max: 2 });
+  const ownerPool = new pg.Pool({ connectionString: urls.get("zvenko_owner"), max: 1 });
   const owner = createDatabase(ownerPool);
   await runMigrations(owner);
 
@@ -57,8 +79,9 @@ export async function startTestDatabase(): Promise<TestDatabase> {
   const identityPool = new pg.Pool({ connectionString: identityUrl, max: 1 });
 
   return {
+    admin: createDatabase(adminPool),
+    adminPool,
     owner,
-    ownerPool,
     app: createDatabase(appPool),
     appUrl,
     identity: createDatabase(identityPool),
@@ -67,6 +90,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
       await appPool.end();
       await identityPool.end();
       await ownerPool.end();
+      await adminPool.end();
       await container.stop();
     },
   };
