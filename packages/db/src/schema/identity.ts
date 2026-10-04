@@ -1,4 +1,13 @@
-import { index, pgSchema, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgSchema,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { users } from "./tenancy.js";
 
 /**
@@ -74,4 +83,27 @@ export const verifications = identity.table(
     ...timestamps,
   },
   (t) => [index("verifications_identifier_idx").on(t.identifier)],
+);
+
+/**
+ * Второй фактор (SEC-02): секрет TOTP и резервные коды. Оба хранятся зашифрованными
+ * ключом AUTH_SECRET (в продакшене — из хранилища секретов под KMS). Одна запись
+ * на пользователя. После серии неверных кодов вход блокируется на время (lockedUntil).
+ */
+export const twoFactors = identity.table(
+  "two_factors",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    verified: boolean("verified").notNull().default(true),
+    failedVerificationCount: integer("failed_verification_count").notNull().default(0),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    // Поле только наше: Better Auth времени изменения у этой таблицы не ведёт.
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("two_factors_user_idx").on(t.userId)],
 );

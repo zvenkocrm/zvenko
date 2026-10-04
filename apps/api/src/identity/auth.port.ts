@@ -6,6 +6,8 @@ export interface Session {
   readonly userId: string;
   /** Активная компания сессии (F-AUTH-06); null — компания ещё не выбрана. */
   readonly tenantId: string | null;
+  /** Включена ли у пользователя 2FA. Если да — эта сессия прошла второй фактор при входе. */
+  readonly twoFactorEnabled: boolean;
 }
 
 /**

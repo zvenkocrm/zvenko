@@ -17,3 +17,6 @@ export const ROLE_SCOPES: Readonly<Record<Role, AccessContext["scopes"]>> = {
 
 export const isRole = (value: string): value is Role =>
   (ROLES as readonly string[]).includes(value);
+
+/** Роли, которым без 2FA доступ к данным компании закрыт (SEC-02): у них права на всё. */
+export const ROLES_REQUIRING_TWO_FACTOR: ReadonlySet<Role> = new Set(["owner", "admin"]);

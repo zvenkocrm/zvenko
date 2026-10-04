@@ -63,6 +63,8 @@ export const users = pgTable(
     // Почта подтверждена: пользователи появляются по приглашению — ссылка из письма и есть проверка.
     emailVerified: boolean("email_verified").notNull().default(false),
     image: text("image"),
+    // Включена ли 2FA (SEC-02). Обязательна для владельца и администраторов компании.
+    twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

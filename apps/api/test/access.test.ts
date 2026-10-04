@@ -1,7 +1,7 @@
 import { and, eq, memberships, newId, users } from "@zvenko/db";
 import { ids, seed, startTestDatabase, type TestDatabase } from "@zvenko/db/testing";
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PROBLEM_TYPES } from "../src/http/problem.js";
 import { as, createTestApp, type TestApp } from "./helpers.js";
 
 let database: TestDatabase | undefined;
@@ -81,6 +81,34 @@ describe("вход по умолчанию — запрещено (SEC-05)", () 
 
   it("в чужой компании — 403: сессия не даёт доступа туда, где пользователь не работает", async () => {
     expect((await get("/api/v1/deals", as(ids.userB1, ids.tenantA))).statusCode).toBe(403);
+  });
+});
+
+describe("2FA по ролям (SEC-02)", () => {
+  it("владелец без 2FA — 403 с типом two-factor-required", async () => {
+    const response = await get("/api/v1/deals", as(ids.userB1, ids.tenantB, { twoFactor: false }));
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ type: PROBLEM_TYPES.twoFactorRequired });
+  });
+
+  it("администратор без 2FA — тоже 403", async () => {
+    await withRole(ids.userA3, "admin", async () => {
+      const response = await get(
+        "/api/v1/deals",
+        as(ids.userA3, ids.tenantA, { twoFactor: false }),
+      );
+      expect(response.statusCode).toBe(403);
+    });
+  });
+
+  it.each(["manager", "head"])("роль %s работает без 2FA", async (role) => {
+    await withRole(ids.userA2, role, async () => {
+      const response = await get(
+        "/api/v1/deals",
+        as(ids.userA2, ids.tenantA, { twoFactor: false }),
+      );
+      expect(response.statusCode).toBe(200);
+    });
   });
 });
 
