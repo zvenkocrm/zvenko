@@ -1,0 +1,91 @@
+# Проверки качества и безопасности (ADR-0008).
+# Действия закреплены по SHA коммита — тег можно переписать, коммит нельзя. Обновляет их Dependabot.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Минимальные права по умолчанию (угроза T22).
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+
+jobs:
+  quality:
+    name: Качество
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - name: Зависимости
+        run: pnpm install --frozen-lockfile
+      - name: Формат
+        run: pnpm format:check
+      - name: Линт
+        run: pnpm lint
+      - name: Типы
+        run: pnpm typecheck
+      - name: Тесты
+        run: pnpm test
+      - name: Сборка
+        run: pnpm build
+
+  secrets:
+    name: Секреты (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - name: Вся история репозитория
+        run: gitleaks git --redact --no-banner --verbose
+
+  vulnerabilities:
+    name: Уязвимые зависимости (OSV)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - name: Проверка lock-файла
+        run: osv-scanner scan source --lockfile pnpm-lock.yaml
+
+  semgrep:
+    name: Статический анализ (Semgrep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep
+        run: pipx run semgrep==1.179.0 scan --config p/default --error --metrics=off
+
+  dependency-review:
+    name: Новые зависимости в PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
