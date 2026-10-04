@@ -70,6 +70,9 @@ export const as = (
 export const TEST_ORIGIN = "http://localhost:3000";
 export const TEST_HOST = "localhost:3000";
 
+/** Адреса компаний в тестах — поддомены, как `neva.zvenko.ru` в продакшене. */
+export const tenantHost = (subdomain: string): string => `${subdomain}.zvenko.test`;
+
 /** Приложение с той же настройкой, что в продакшене (configureApp), и логом в память. */
 export async function createTestApp(options: TestAppOptions = {}): Promise<TestApp> {
   const unreachable = "postgres://zvenko:unused@127.0.0.1:9/zvenko";
@@ -78,8 +81,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     DATABASE_URL: options.databaseUrl ?? unreachable,
     IDENTITY_DATABASE_URL: options.identityUrl ?? unreachable,
     AUTH_SECRET: randomBytes(32).toString("base64url"),
-    // localhost:80 — хост запросов inject по умолчанию.
-    AUTH_ORIGINS: `${TEST_ORIGIN},http://localhost:80`,
+    // localhost:80 — хост запросов inject по умолчанию; *.zvenko.test — адреса компаний.
+    AUTH_ORIGINS: `${TEST_ORIGIN},http://localhost:80,http://*.zvenko.test`,
   });
   const lines: string[] = [];
   const logger = createLogger(config.LOG_LEVEL, {

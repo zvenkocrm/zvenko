@@ -19,3 +19,25 @@ export function createHostMatcher(origins: readonly string[]): (host: string) =>
     return matchers.some((matches) => matches(normalized));
   };
 }
+
+/**
+ * Поддомен из адреса по маскам AUTH_ORIGINS: `neva.zvenko.ru` → `neva` для `*.zvenko.ru`.
+ * Для адресов без маски (локальная разработка) — null.
+ */
+export function createSubdomainExtractor(
+  origins: readonly string[],
+): (host: string) => string | null {
+  const suffixes = origins
+    .map((origin) => origin.replace(/^https?:\/\//, "").toLowerCase())
+    .filter((pattern) => pattern.startsWith("*."))
+    .map((pattern) => pattern.slice(1));
+  return (host) => {
+    const normalized = host.toLowerCase();
+    for (const suffix of suffixes) {
+      if (!normalized.endsWith(suffix)) continue;
+      const label = normalized.slice(0, normalized.length - suffix.length);
+      if (LABEL.test(label)) return label;
+    }
+    return null;
+  };
+}

@@ -9,13 +9,16 @@ import { as, createTestApp, type TestApp } from "./helpers.js";
  * «реестр совпадает с приложением». По записи генерируются проверки:
  * - для всех, кроме public, — без входа 401;
  * - read-one — объект по ID: чужой → 404, свой → 200;
- * - list — список: сотрудник компании B не видит объектов компании A, A видит свои.
+ * - list — список: сотрудник компании B не видит объектов компании A, A видит свои;
+ * - session — адрес вошедшего пользователя без данных компании (выбор компании);
+ *   его изоляцию проверяют отдельные тесты рядом с адресом.
  *
  * Проверка «свой виден» нужна, чтобы сломанный адрес, который всегда отвечает 404,
  * не прошёл тест изоляции.
  */
 type Entry =
-  { readonly kind: "public" } | { readonly kind: "list" | "read-one"; readonly entity: Entity };
+  | { readonly kind: "public" | "session" }
+  | { readonly kind: "list" | "read-one"; readonly entity: Entity };
 
 /** Объекты тестовых данных: по одному у компании A и у компании B. */
 const objects = {
@@ -31,6 +34,8 @@ const registry: Readonly<Record<string, Entry>> = {
   "POST /api/auth/*": { kind: "public" },
   "GET /api/v1/deals": { kind: "list", entity: "deal" },
   "GET /api/v1/deals/:id": { kind: "read-one", entity: "deal" },
+  // Выбор компании: только своей — проверяется в auth.test.ts.
+  "PUT /api/v1/session/tenant": { kind: "session" },
 };
 
 /** A1 — менеджер компании A (видит свои сделки), B1 — владелец компании B (видит всё в B). */
@@ -82,7 +87,7 @@ describe("реестр адресов", () => {
 const protectedRoutes = Object.entries(registry).filter(([, entry]) => entry.kind !== "public");
 
 describe.each(protectedRoutes)("%s", (route, entry) => {
-  const sample = entry.kind === "public" ? undefined : objects[entry.entity];
+  const sample = "entity" in entry ? objects[entry.entity] : undefined;
 
   it("без входа — 401", async () => {
     expect((await request(route, {}, sample?.a)).status).toBe(401);

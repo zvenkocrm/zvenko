@@ -2,7 +2,7 @@ import { and, eq, memberships, newId, users } from "@zvenko/db";
 import { ids, seed, startTestDatabase, type TestDatabase } from "@zvenko/db/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PROBLEM_TYPES } from "../src/http/problem.js";
-import { as, createTestApp, type TestApp } from "./helpers.js";
+import { as, createTestApp, tenantHost, type TestApp } from "./helpers.js";
 
 let database: TestDatabase | undefined;
 let testApp: TestApp | undefined;
@@ -81,6 +81,39 @@ describe("вход по умолчанию — запрещено (SEC-05)", () 
 
   it("в чужой компании — 403: сессия не даёт доступа туда, где пользователь не работает", async () => {
     expect((await get("/api/v1/deals", as(ids.userB1, ids.tenantA))).statusCode).toBe(403);
+  });
+});
+
+describe("компания по адресу сайта (F-AUTH-06)", () => {
+  const onHost = (host: string, headers: Record<string, string>) =>
+    app().app.inject({ method: "GET", url: "/api/v1/deals", headers: { host, ...headers } });
+
+  it("адрес компании задаёт компанию, даже если в сессии она не выбрана", async () => {
+    const response = await onHost(tenantHost("company-a"), as(ids.userA1, null));
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ items: { id: string }[] }>().items.map((d) => d.id)).toEqual([
+      ids.dealA1,
+    ]);
+  });
+
+  it("адрес важнее компании, выбранной в сессии: сотрудник B на адресе A — 403", async () => {
+    const response = await onHost(tenantHost("company-a"), as(ids.userB1, ids.tenantB));
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("неизвестный поддомен — 404", async () => {
+    const response = await onHost(tenantHost("no-such-company"), as(ids.userA1, ids.tenantA));
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("без входа — 401 на любом поддомене: есть ли там компания, не раскрывается", async () => {
+    expect((await onHost(tenantHost("no-such-company"), {})).statusCode).toBe(401);
+    expect((await onHost(tenantHost("company-a"), {})).statusCode).toBe(401);
+  });
+
+  it("служебный поддомен (app) — не компания: берётся выбранная в сессии", async () => {
+    const response = await onHost(tenantHost("app"), as(ids.userA1, ids.tenantA));
+    expect(response.statusCode).toBe(200);
   });
 });
 
