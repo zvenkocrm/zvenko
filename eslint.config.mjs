@@ -24,6 +24,8 @@ export default defineConfig(
       "@typescript-eslint/no-floating-promises": "error",
       // Новый вариант в union обязан обрабатываться во всех switch.
       "@typescript-eslint/switch-exhaustiveness-check": "error",
+      // Модули NestJS — классы с одним декоратором @Module, это норма фреймворка.
+      "@typescript-eslint/no-extraneous-class": ["error", { allowWithDecorator: true }],
     },
   },
   {
