@@ -1,14 +1,19 @@
 // Локальная среда одной командой (ADR-0008, MAINT-05):
-// 1. Создаёт .env со случайными паролями, если его нет. Настоящих секретов прода здесь нет.
+// 1. Создаёт .env со случайными паролями или дописывает в него недостающие переменные.
+//    Настоящих секретов прода здесь нет.
 // 2. Создаёт конфиг ключей S3 для SeaweedFS.
 // 3. Запускает сервисы Docker Compose и ждёт их готовности.
-// 4. Ставит git-хуки (lefthook).
+// 4. Создаёт в PostgreSQL роль приложения — как в проде, без прав суперпользователя и BYPASSRLS.
+// 5. Ставит git-хуки (lefthook).
+// Миграции применяет следующий шаг `pnpm dev:up` — `pnpm --filter @zvenko/db db:migrate`.
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const ENV_FILE = ".env";
 const S3_CONFIG = ".dev/seaweedfs/s3.json";
+const ENV_HEADER =
+  "# Локальные секреты для разработки. Создано scripts/dev-up.mjs. Не коммитить.\n";
 
 const secret = (bytes = 24) => randomBytes(bytes).toString("base64url");
 
@@ -24,20 +29,34 @@ function parseEnv(text) {
   );
 }
 
+/** Значения, которых нет в .env, создаются; существующие не меняются. */
 function ensureEnv() {
-  if (existsSync(ENV_FILE)) return parseEnv(readFileSync(ENV_FILE, "utf8"));
-  const env = {
-    POSTGRES_PASSWORD: secret(),
-    VALKEY_PASSWORD: secret(),
-    S3_ACCESS_KEY: secret(12),
-    S3_SECRET_KEY: secret(),
+  const text = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf8") : ENV_HEADER;
+  const env = parseEnv(text);
+  const generators = {
+    POSTGRES_PASSWORD: () => secret(),
+    VALKEY_PASSWORD: () => secret(),
+    S3_ACCESS_KEY: () => secret(12),
+    S3_SECRET_KEY: () => secret(),
+    APP_DB_PASSWORD: () => secret(),
+    // API подключается ролью приложения (RLS действует), миграции — ролью-владельцем схемы.
+    DATABASE_URL: () => `postgres://zvenko_app:${env.APP_DB_PASSWORD}@127.0.0.1:5432/zvenko`,
+    MIGRATION_DATABASE_URL: () =>
+      `postgres://zvenko:${env.POSTGRES_PASSWORD}@127.0.0.1:5432/zvenko`,
   };
-  const lines = [
-    "# Локальные секреты для разработки. Создано scripts/dev-up.mjs. Не коммитить.",
-    ...Object.entries(env).map(([key, value]) => `${key}=${value}`),
-  ];
-  writeFileSync(ENV_FILE, lines.join("\n") + "\n", { mode: 0o600 });
-  console.log("Создан .env со случайными паролями.");
+  const added = [];
+  for (const [key, generate] of Object.entries(generators)) {
+    if (!env[key]) {
+      env[key] = generate();
+      added.push(key);
+    }
+  }
+  if (added.length > 0) {
+    const lines = added.map((key) => `${key}=${env[key]}`);
+    const base = text.endsWith("\n") ? text : `${text}\n`;
+    writeFileSync(ENV_FILE, `${base}${lines.join("\n")}\n`, { mode: 0o600 });
+    console.log(`В .env добавлено: ${added.join(", ")}.`);
+  }
   return env;
 }
 
@@ -57,10 +76,29 @@ function writeS3Config(env) {
 
 // Без shell: аргументы передаются как есть, без склейки строк (DEP0190).
 // docker и lefthook — исполняемые файлы и на Windows запускаются напрямую.
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: "inherit" });
+function run(command, args, input) {
+  const result = spawnSync(command, args, {
+    stdio: [input === undefined ? "inherit" : "pipe", "inherit", "inherit"],
+    input,
+  });
   if (result.error) return null;
   return result.status ?? 1;
+}
+
+/** Роль приложения: создаётся один раз, пароль — из .env. В проде роли создаёт инфраструктура. */
+function ensureAppRole(env) {
+  const password = env.APP_DB_PASSWORD.replaceAll("'", "''");
+  const sql = `
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'zvenko_app') THEN
+    CREATE ROLE zvenko_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+  END IF;
+END $$;
+ALTER ROLE zvenko_app WITH LOGIN PASSWORD '${password}';
+`;
+  // SQL с паролем — через stdin, а не аргументом: аргументы видны в списке процессов.
+  const psql = ["compose", "exec", "-T", "postgres", "psql", "-q", "-v", "ON_ERROR_STOP=1"];
+  return run("docker", [...psql, "-U", "zvenko", "-d", "zvenko"], sql);
 }
 
 const env = ensureEnv();
@@ -68,6 +106,11 @@ writeS3Config(env);
 
 if (run("docker", ["compose", "up", "--detach", "--wait"]) !== 0) {
   console.error("Не удалось запустить сервисы. Запущен ли Docker?");
+  process.exit(1);
+}
+
+if (ensureAppRole(env) !== 0) {
+  console.error("Не удалось создать роль приложения в PostgreSQL.");
   process.exit(1);
 }
 
@@ -79,8 +122,8 @@ if (hooks === null) {
 }
 
 console.log(`
-Локальная среда готова:
-  PostgreSQL  127.0.0.1:5432  пользователь и база: zvenko
+Локальные сервисы готовы:
+  PostgreSQL  127.0.0.1:5432  база zvenko; владелец схемы — zvenko, приложение — zvenko_app
   Valkey      127.0.0.1:6379
   S3          http://127.0.0.1:8333
   Почта       http://127.0.0.1:8025

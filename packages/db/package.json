@@ -22,7 +22,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=../../.env dist/migrate-cli.js"
   },
   "dependencies": {
     "drizzle-orm": "0.45.3",
