@@ -29,6 +29,20 @@ export default defineConfig(
     },
   },
   {
+    // drizzle-orm — только через @zvenko/db: две копии библиотеки дают несовместимые типы схемы.
+    files: ["apps/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "drizzle-orm", message: "Импортируйте операторы запросов из @zvenko/db." },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Конфиги и скрипты на JS: без проверок по типам.
     files: ["**/*.{js,mjs,cjs}"],
     extends: [tseslint.configs.disableTypeChecked],

@@ -16,13 +16,3 @@ export abstract class AuthPort {
   /** Сессия по запросу или null, если пользователь не вошёл или сессия недействительна. */
   abstract getSession(request: FastifyRequest): Promise<Session | null>;
 }
-
-/**
- * Адаптер до подключения модуля входа: не пускает никого. Так API безопасен
- * в любой момент разработки — забытая настройка не открывает доступ.
- */
-export class DenyAllAuth extends AuthPort {
-  getSession(): Promise<Session | null> {
-    return Promise.resolve(null);
-  }
-}

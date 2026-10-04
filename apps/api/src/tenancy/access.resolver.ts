@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { type AccessContext, memberships } from "@zvenko/db";
-import { and, eq } from "drizzle-orm";
+import { type AccessContext, and, eq, memberships } from "@zvenko/db";
+
 import type { Logger } from "pino";
 import { LOGGER } from "../config/config.module.js";
 import { ROLE_SCOPES, isRole } from "./roles.js";

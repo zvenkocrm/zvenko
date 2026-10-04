@@ -3,7 +3,7 @@
 //    Настоящих секретов прода здесь нет.
 // 2. Создаёт конфиг ключей S3 для SeaweedFS.
 // 3. Запускает сервисы Docker Compose и ждёт их готовности.
-// 4. Создаёт в PostgreSQL роль приложения — как в проде, без прав суперпользователя и BYPASSRLS.
+// 4. Создаёт в PostgreSQL роли приложения и модуля входа — как в проде, без прав суперпользователя и BYPASSRLS.
 // 5. Ставит git-хуки (lefthook).
 // Миграции применяет следующий шаг `pnpm dev:up` — `pnpm --filter @zvenko/db db:migrate`.
 import { spawnSync } from "node:child_process";
@@ -49,10 +49,16 @@ function ensureEnv() {
     S3_ACCESS_KEY: () => secret(12),
     S3_SECRET_KEY: () => secret(),
     APP_DB_PASSWORD: () => secret(),
+    IDENTITY_DB_PASSWORD: () => secret(),
     // API подключается ролью приложения (RLS действует), миграции — ролью-владельцем схемы.
     DATABASE_URL: () => `postgres://zvenko_app:${env.APP_DB_PASSWORD}@127.0.0.1:5432/zvenko`,
     MIGRATION_DATABASE_URL: () =>
       `postgres://zvenko:${env.POSTGRES_PASSWORD}@127.0.0.1:5432/zvenko`,
+    // Модуль входа — своей ролью: пароли и сессии отдельно от данных компаний (ADR-0006).
+    IDENTITY_DATABASE_URL: () =>
+      `postgres://zvenko_identity:${env.IDENTITY_DB_PASSWORD}@127.0.0.1:5432/zvenko`,
+    AUTH_SECRET: () => secret(48),
+    AUTH_ORIGINS: () => "http://127.0.0.1:3000,http://localhost:3000",
   };
   const added = [];
   for (const [key, generate] of Object.entries(generators)) {
@@ -100,18 +106,25 @@ function run(command, args, input) {
   return result.status ?? 1;
 }
 
-/** Роль приложения: создаётся один раз, пароль — из .env. В проде роли создаёт инфраструктура. */
-function ensureAppRole(env) {
-  const password = env.APP_DB_PASSWORD.replaceAll("'", "''");
-  const sql = `
+/**
+ * Роли приложения и модуля входа: создаются один раз, пароли — из .env. Без прав
+ * суперпользователя и обхода RLS. В проде роли создаёт инфраструктура.
+ */
+function ensureRoles(env) {
+  const roles = { zvenko_app: env.APP_DB_PASSWORD, zvenko_identity: env.IDENTITY_DB_PASSWORD };
+  const sql = Object.entries(roles)
+    .map(
+      ([role, password]) => `
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'zvenko_app') THEN
-    CREATE ROLE zvenko_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${role}') THEN
+    CREATE ROLE ${role} LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
   END IF;
 END $$;
-ALTER ROLE zvenko_app WITH LOGIN PASSWORD '${password}';
-`;
-  // SQL с паролем — через stdin, а не аргументом: аргументы видны в списке процессов.
+ALTER ROLE ${role} WITH LOGIN PASSWORD '${password.replaceAll("'", "''")}';
+`,
+    )
+    .join("");
+  // SQL с паролями — через stdin, а не аргументом: аргументы видны в списке процессов.
   const psql = ["compose", "exec", "-T", "postgres", "psql", "-q", "-v", "ON_ERROR_STOP=1"];
   return run("docker", [...psql, "-U", "zvenko", "-d", "zvenko"], sql);
 }
@@ -124,8 +137,8 @@ if (run("docker", ["compose", "up", "--detach", "--wait"]) !== 0) {
   process.exit(1);
 }
 
-if (ensureAppRole(env) !== 0) {
-  console.error("Не удалось создать роль приложения в PostgreSQL.");
+if (ensureRoles(env) !== 0) {
+  console.error("Не удалось создать роли в PostgreSQL.");
   process.exit(1);
 }
 
@@ -138,7 +151,7 @@ if (hooks === null) {
 
 console.log(`
 Локальные сервисы готовы:
-  PostgreSQL  127.0.0.1:5432  база zvenko; владелец схемы — zvenko, приложение — zvenko_app
+  PostgreSQL  127.0.0.1:5432  база zvenko; владелец — zvenko, приложение — zvenko_app, вход — zvenko_identity
   Valkey      127.0.0.1:6379
   S3          http://127.0.0.1:8333
   Почта       http://127.0.0.1:8025

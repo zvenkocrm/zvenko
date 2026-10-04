@@ -26,6 +26,9 @@ type Entity = keyof typeof objects;
 const registry: Readonly<Record<string, Entry>> = {
   "GET /health/live": { kind: "public" },
   "GET /health/ready": { kind: "public" },
+  // Вход и сессии (Better Auth): без входа по определению; лишние эндпоинты выключены.
+  "GET /api/auth/*": { kind: "public" },
+  "POST /api/auth/*": { kind: "public" },
   "GET /api/v1/deals": { kind: "list", entity: "deal" },
   "GET /api/v1/deals/:id": { kind: "read-one", entity: "deal" },
 };
