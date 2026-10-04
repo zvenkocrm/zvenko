@@ -25,3 +25,13 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
+    # Локальные PostgreSQL и Valkey повторяют версии управляемых сервисов Yandex Cloud
+    # (ADR-0003). Новую мажорную (для Valkey — и минорную) версию берём отдельным решением,
+    # когда облако её поддержит.
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+      - dependency-name: valkey/valkey
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
