@@ -1,5 +1,6 @@
 import { type DynamicModule, Module } from "@nestjs/common";
 import type { Logger } from "pino";
+import { AuditModule } from "./audit/audit.module.js";
 import type { Config } from "./config/config.js";
 import { ConfigModule } from "./config/config.module.js";
 import { CrmModule } from "./crm/crm.module.js";
@@ -17,6 +18,7 @@ export class AppModule {
         ConfigModule.register(config, logger),
         DatabaseModule,
         IdentityModule,
+        AuditModule,
         TenancyModule,
         HealthModule,
         CrmModule,
