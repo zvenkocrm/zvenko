@@ -14,8 +14,22 @@ trustPolicy: no-downgrade
 blockExoticSubdeps: true
 # Скрипты установки зависимостей — только по явному разрешению.
 strictDepBuilds: true
-allowBuilds: {}
+# Проверено 04.10.2026 — скрипты не нужны, запрещены:
+#   esbuild — бинарник ставится платформенным пакетом @esbuild/*, скрипт только проверяет его;
+#   ssh2, cpu-features — нативные ускорители SSH (через testcontainers), Docker у нас локальный;
+#   protobufjs — скрипт проверяет версию.
+allowBuilds:
+  esbuild: false
+  ssh2: false
+  cpu-features: false
+  protobufjs: false
 # Версии Node.js и pnpm — строго из package.json.
 engineStrict: true
 # Точные версии зависимостей; обновления — через Dependabot.
 savePrefix: ""
+# Принудительные версии вложенных зависимостей — только с причиной и способом снять.
+overrides:
+  # drizzle-kit 0.31 тянет через устаревший @esbuild-kit esbuild 0.18 с уязвимостью
+  # GHSA-67mh-4wv8-2f99 (dev-сервер esbuild отдаёт ответы любому сайту). Ставим 0.25.12 —
+  # ту же версию, что drizzle-kit использует сам. Снять, когда drizzle-kit откажется от @esbuild-kit.
+  "@esbuild-kit/core-utils>esbuild": "0.25.12"
