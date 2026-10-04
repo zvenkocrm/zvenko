@@ -27,3 +27,9 @@ allowBuilds:
 engineStrict: true
 # Точные версии зависимостей; обновления — через Dependabot.
 savePrefix: ""
+# Принудительные версии вложенных зависимостей — только с причиной и способом снять.
+overrides:
+  # drizzle-kit 0.31 тянет через устаревший @esbuild-kit esbuild 0.18 с уязвимостью
+  # GHSA-67mh-4wv8-2f99 (dev-сервер esbuild отдаёт ответы любому сайту). Ставим 0.25.12 —
+  # ту же версию, что drizzle-kit использует сам. Снять, когда drizzle-kit откажется от @esbuild-kit.
+  "@esbuild-kit/core-utils>esbuild": "0.25.12"
