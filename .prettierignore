@@ -1,4 +1,6 @@
 pnpm-lock.yaml
+# Генерирует drizzle-kit — правим только через схему (кроме ручных миграций)
+packages/*/migrations/
 dist/
 coverage/
 .turbo/

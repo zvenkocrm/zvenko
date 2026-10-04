@@ -1,0 +1,27 @@
+{
+  "name": "@zvenko/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Схема БД, миграции и изоляция данных компаний (RLS) — ADR-0002",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.3",
+    "pg": "8.23.0",
+    "uuid": "14.0.2"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "12.1.0",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "typescript": "6.0.3",
+    "vitest": "5.0.2"
+  }
+}
