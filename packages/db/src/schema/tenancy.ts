@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
+  check,
   foreignKey,
   pgPolicy,
   pgTable,
@@ -9,7 +11,13 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { newId } from "../ids.js";
-import { appRole, currentTenantId, tenantIsolation, tenantWideAccess } from "./rls.js";
+import {
+  appRole,
+  currentTenantId,
+  identityRole,
+  tenantIsolation,
+  tenantWideAccess,
+} from "./rls.js";
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
@@ -43,8 +51,8 @@ export const tenants = pgTable(
 
 /**
  * Пользователь — глобальная учётная запись: один человек может работать в нескольких компаниях
- * (F-AUTH-06). Приложение видит только сотрудников текущей компании. Вход и учётные данные —
- * отдельная роль модуля identity (ADR-0006).
+ * (F-AUTH-06). Приложение видит только сотрудников текущей компании. Создаёт и меняет
+ * пользователей модуль входа своей ролью (ADR-0006); поля — те, что ждёт Better Auth.
  */
 export const users = pgTable(
   "users",
@@ -52,13 +60,25 @@ export const users = pgTable(
     id: uuid("id").primaryKey().$defaultFn(newId),
     email: text("email").notNull().unique(),
     name: text("name").notNull(),
+    // Почта подтверждена: пользователи появляются по приглашению — ссылка из письма и есть проверка.
+    emailVerified: boolean("email_verified").notNull().default(false),
+    image: text("image"),
     createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    // Одна почта — один пользователь независимо от регистра букв.
+    check("users_email_lowercase", sql`${t.email} = lower(${t.email})`),
     pgPolicy("users_visible_in_tenant", {
       for: "select",
       to: appRole,
       using: sql`exists (select 1 from memberships m where m.user_id = ${t.id} and m.tenant_id = ${currentTenantId})`,
+    }),
+    pgPolicy("users_identity", {
+      for: "all",
+      to: identityRole,
+      using: sql`true`,
+      withCheck: sql`true`,
     }),
   ],
 );

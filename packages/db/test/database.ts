@@ -15,21 +15,33 @@ export interface TestDatabase {
   readonly app: Database;
   /** Адрес подключения ролью приложения — для API в интеграционных тестах. */
   readonly appUrl: string;
+  /** Роль модуля входа: схема identity и пользователи, без данных компаний. */
+  readonly identity: Database;
+  readonly identityUrl: string;
   stop(): Promise<void>;
 }
+
+/** Роли создаёт инфраструктура — в тестах повторяем это вручную, с теми же ограничениями. */
+const ROLES = ["zvenko_app", "zvenko_identity"] as const;
 
 export async function startTestDatabase(): Promise<TestDatabase> {
   const container = await new PostgreSqlContainer(IMAGE).start();
   const ownerPool = new pg.Pool({ connectionString: container.getConnectionUri(), max: 2 });
 
-  // Роль приложения создаёт инфраструктура — в тестах повторяем это вручную.
-  const appPassword = randomBytes(18).toString("base64url");
+  const urls = new Map<string, string>();
   const client = await ownerPool.connect();
   try {
-    await client.query(
-      `create role zvenko_app login password ${client.escapeLiteral(appPassword)}
-       nosuperuser nobypassrls nocreatedb nocreaterole`,
-    );
+    for (const role of ROLES) {
+      const password = randomBytes(18).toString("base64url");
+      await client.query(
+        `create role ${role} login password ${client.escapeLiteral(password)}
+         nosuperuser nobypassrls nocreatedb nocreaterole`,
+      );
+      const url = new URL(container.getConnectionUri());
+      url.username = role;
+      url.password = password;
+      urls.set(role, url.toString());
+    }
   } finally {
     client.release();
   }
@@ -37,19 +49,22 @@ export async function startTestDatabase(): Promise<TestDatabase> {
   const owner = createDatabase(ownerPool);
   await runMigrations(owner);
 
-  const appUrl = new URL(container.getConnectionUri());
-  appUrl.username = "zvenko_app";
-  appUrl.password = appPassword;
+  const appUrl = urls.get("zvenko_app") ?? "";
+  const identityUrl = urls.get("zvenko_identity") ?? "";
   // Одно соединение: так тесты заодно проверяют, что контекст не «перетекает» между транзакциями.
-  const appPool = new pg.Pool({ connectionString: appUrl.toString(), max: 1 });
+  const appPool = new pg.Pool({ connectionString: appUrl, max: 1 });
+  const identityPool = new pg.Pool({ connectionString: identityUrl, max: 1 });
 
   return {
     owner,
     ownerPool,
     app: createDatabase(appPool),
-    appUrl: appUrl.toString(),
+    appUrl,
+    identity: createDatabase(identityPool),
+    identityUrl,
     async stop() {
       await appPool.end();
+      await identityPool.end();
       await ownerPool.end();
       await container.stop();
     },

@@ -7,6 +7,12 @@ import { pgPolicy, pgRole, type AnyPgColumn, type PgPolicy } from "drizzle-orm/p
  */
 export const appRole = pgRole("zvenko_app").existing();
 
+/**
+ * Роль модуля входа (ADR-0006): пароли, сессии, токены — схема identity. Данных компаний
+ * не видит, а роль приложения не видит схему identity. Создаётся инфраструктурой (IaC).
+ */
+export const identityRole = pgRole("zvenko_identity").existing();
+
 // Настройки транзакции, которые выставляет withAccess(). Обёртка в подзапрос — чтобы PostgreSQL
 // вычислил значение один раз на запрос, а не на каждую строку.
 // nullif(…, ''): после конца транзакции PostgreSQL возвращает для настройки не NULL, а пустую
