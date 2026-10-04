@@ -8,11 +8,13 @@ import {
 import type { Database } from "@zvenko/db";
 import { sql } from "drizzle-orm";
 import { DATABASE } from "../database/database.module.js";
+import { Public } from "../tenancy/access.js";
 
 /**
  * Проверки для балансировщика и оркестратора (REL-01). Без входа и без подробностей:
  * ответ не раскрывает устройство системы.
  */
+@Public()
 @Controller("health")
 export class HealthController implements BeforeApplicationShutdown {
   private shuttingDown = false;

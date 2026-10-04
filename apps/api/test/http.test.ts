@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { DATABASE } from "../src/database/database.module.js";
 import { ProblemException } from "../src/http/problem.js";
+import { Public } from "../src/tenancy/access.js";
 import { createTestApp, type TestApp } from "./helpers.js";
 
 const dealSchema = z.object({
@@ -11,6 +12,7 @@ const dealSchema = z.object({
 });
 
 /** Адреса только для тестов: проверка данных, внутренняя ошибка, ошибка с пояснением. */
+@Public()
 @Controller({ path: "test", version: "1" })
 class ProbeController {
   @Post("deals")

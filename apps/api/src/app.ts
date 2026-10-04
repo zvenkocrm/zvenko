@@ -88,6 +88,8 @@ export function configureApp(app: NestFastifyApplication): void {
   );
 
   const fastify = app.getHttpAdapter().getInstance();
+  // Профиль доступа выставляет AccessGuard; поле объявлено заранее — так Fastify быстрее.
+  fastify.decorateRequest("access", null);
   fastify.addHook("onRequest", (request, reply, done) => {
     void reply.header("x-request-id", request.id);
     done();
