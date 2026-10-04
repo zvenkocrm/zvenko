@@ -7,6 +7,7 @@ import { CONFIG, LOGGER } from "../config/config.module.js";
 import { createPgPool } from "../database/database.module.js";
 import { createAuth } from "./auth.js";
 import { AuthController } from "./auth.controller.js";
+import { AuthEvents } from "./auth-events.js";
 import { AuthPort } from "./auth.port.js";
 import { BetterAuthAdapter } from "./better-auth.adapter.js";
 import { IdentityService } from "./identity.service.js";
@@ -40,7 +41,7 @@ import { AUTH, IDENTITY_DB, IDENTITY_POOL } from "./tokens.js";
     },
     {
       provide: AUTH,
-      inject: [IDENTITY_DB, CONFIG, LOGGER],
+      inject: [IDENTITY_DB, CONFIG, LOGGER, AuthEvents],
       useFactory: createAuth,
     },
     { provide: AuthPort, useClass: BetterAuthAdapter },

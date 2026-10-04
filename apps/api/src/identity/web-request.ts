@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { CLIENT_IP_HEADER } from "./auth.js";
+import { CLIENT_IP_HEADER, REQUEST_ID_HEADER } from "./request-headers.js";
 
 /**
  * Заголовки, которые не передаём в Better Auth: заголовки соединения, длина старого тела
@@ -18,9 +18,13 @@ const DROPPED = new Set([
   "x-forwarded-proto",
   "x-real-ip",
   CLIENT_IP_HEADER,
+  REQUEST_ID_HEADER,
 ]);
 
-/** Заголовки запроса для Better Auth. IP клиента — тот, что вычислил Fastify с учётом TRUST_PROXY. */
+/**
+ * Заголовки запроса для Better Auth. IP клиента — тот, что вычислил Fastify с учётом TRUST_PROXY;
+ * ID запроса — для журнала аудита.
+ */
 export function toWebHeaders(request: FastifyRequest): Headers {
   const headers = new Headers();
   for (const [name, value] of Object.entries(request.headers)) {
@@ -28,6 +32,7 @@ export function toWebHeaders(request: FastifyRequest): Headers {
     headers.set(name, Array.isArray(value) ? value.join(", ") : value);
   }
   headers.set(CLIENT_IP_HEADER, request.ip);
+  headers.set(REQUEST_ID_HEADER, request.id);
   return headers;
 }
 
